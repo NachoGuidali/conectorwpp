@@ -51,7 +51,7 @@ class WebhookView(View):
             payload = json.loads(request.body)
             event = payload.get('event', '')
             # Cache QR code delivered by webhook
-            if event == 'QRCODE_UPDATED':
+            if event in ('QRCODE_UPDATED', 'qrcode.updated'):
                 from django.core.cache import cache
                 qr_data = payload.get('data', {})
                 qr_b64 = (qr_data.get('qrcode', {}).get('base64') or
