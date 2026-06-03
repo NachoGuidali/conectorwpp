@@ -1,0 +1,445 @@
+import json
+import logging
+
+from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views import View
+from django.views.generic import ListView
+from django.views.decorators.csrf import csrf_exempt
+
+from apps.users.models import User
+from .models import Conversacion, Mensaje, PlantillaHSM, ConfiguracionWhatsApp
+from .tasks import process_incoming_message, send_whatsapp_message_task
+from .webhook import parse_incoming_webhook, verify_webhook_token
+
+logger = logging.getLogger('apps.whatsapp')
+
+
+class SupervisorRequiredMixin(LoginRequiredMixin):
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated or not request.user.is_supervisor:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden('Solo supervisores y administradores.')
+        return super().dispatch(request, *args, **kwargs)
+
+
+def _get_convs_qs(user):
+    from django.db.models import Q
+    qs = Conversacion.objects.select_related('agente').filter(archivada=False).order_by('-ultimo_mensaje_at', '-pk')
+    if not user.can_see_all:
+        qs = qs.filter(agente=user)
+    return qs
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class WebhookView(View):
+    def get(self, request):
+        return HttpResponse('OK', status=200)
+
+    def post(self, request):
+        token = request.headers.get('apikey', '')
+        configured_token = ConfiguracionWhatsApp.get_setting('webhook_token')
+        if not verify_webhook_token(token, configured_token):
+            return HttpResponse('Forbidden', status=403)
+        try:
+            payload = json.loads(request.body)
+            messages_data = parse_incoming_webhook(payload)
+            for msg_data in messages_data:
+                process_incoming_message.delay(msg_data)
+        except Exception as e:
+            logger.exception('Webhook error: %s', e)
+        return HttpResponse('OK', status=200)
+
+
+class InboxView(LoginRequiredMixin, View):
+    template_name = 'whatsapp/inbox.html'
+
+    def get(self, request):
+        from django.db.models import Q
+        qs = _get_convs_qs(request.user)
+
+        q = request.GET.get('q', '').strip()
+        if q:
+            qs = qs.filter(Q(nombre_contacto__icontains=q) | Q(telefono__icontains=q))
+
+        sin_agente = request.GET.get('sin_agente', '').strip()
+        if sin_agente:
+            qs = qs.filter(agente__isnull=True)
+
+        solo_no_leidos = request.GET.get('no_leidos', '').strip()
+        if solo_no_leidos:
+            qs = qs.filter(mensajes_no_leidos__gt=0)
+
+        conversaciones = list(qs[:100])
+        unread_total = _get_convs_qs(request.user).filter(mensajes_no_leidos__gt=0).count()
+
+        # Conversación seleccionada
+        selected_conv = None
+        mensajes = []
+        plantillas = []
+        agents = None
+        last_msg_id = 0
+
+        contacto_campos = []
+        conv_pk = request.GET.get('conv', '').strip()
+        if conv_pk:
+            try:
+                selected_conv = (
+                    _get_convs_qs(request.user)
+                    .select_related('contacto')
+                    .get(pk=int(conv_pk))
+                )
+                Conversacion.objects.filter(pk=selected_conv.pk).update(mensajes_no_leidos=0)
+                msgs_qs = selected_conv.mensajes.order_by('timestamp')
+                total = msgs_qs.count()
+                mensajes = list(msgs_qs[max(0, total - 60):])
+                plantillas = PlantillaHSM.objects.filter(activa=True)
+                if request.user.can_see_all:
+                    agents = User.objects.filter(is_active=True).order_by('first_name', 'username')
+                last_msg = selected_conv.mensajes.order_by('timestamp').last()
+                last_msg_id = last_msg.pk if last_msg else 0
+                if selected_conv.contacto:
+                    contacto_campos = selected_conv.contacto.get_campos_con_valores()
+            except (Conversacion.DoesNotExist, ValueError):
+                selected_conv = None
+
+        return render(request, self.template_name, {
+            'conversaciones': conversaciones,
+            'unread_total': unread_total,
+            'q': q,
+            'sin_agente': sin_agente,
+            'solo_no_leidos': solo_no_leidos,
+            'selected_conv': selected_conv,
+            'mensajes': mensajes,
+            'plantillas': plantillas,
+            'agents': agents,
+            'last_msg_id': last_msg_id,
+            'contacto_campos': contacto_campos,
+        })
+
+    def post(self, request):
+        conv_pk = request.POST.get('conv_pk', '').strip()
+        if not conv_pk:
+            return redirect('whatsapp:inbox')
+
+        conv = get_object_or_404(_get_convs_qs(request.user), pk=conv_pk)
+        action = request.POST.get('action', '')
+
+        if action == 'send_text':
+            body = request.POST.get('body', '').strip()
+            if body:
+                msg = Mensaje.objects.create(
+                    conversacion=conv, direccion=Mensaje.DIR_SALIENTE,
+                    tipo=Mensaje.TIPO_TEXTO, contenido=body,
+                    status=Mensaje.STATUS_PENDIENTE,
+                    enviado_por=request.user, timestamp=timezone.now(),
+                )
+                send_whatsapp_message_task.delay(msg.pk)
+                Conversacion.objects.filter(pk=conv.pk).update(ultimo_mensaje_at=timezone.now())
+
+        elif action == 'send_template':
+            plantilla_id = request.POST.get('plantilla_id')
+            if plantilla_id:
+                plantilla = get_object_or_404(PlantillaHSM, pk=plantilla_id)
+                vals = [request.POST.get(f'var_{i+1}', '') for i in range(len(plantilla.variables or []))]
+                text = plantilla.preview(vals if any(vals) else None)
+                try:
+                    from .sender import send_text_message
+                    result = send_text_message(conv.telefono, text)
+                    Mensaje.objects.create(
+                        conversacion=conv, direccion=Mensaje.DIR_SALIENTE,
+                        tipo=Mensaje.TIPO_PLANTILLA, contenido=text,
+                        whatsapp_message_id=result.get('id', ''),
+                        status=Mensaje.STATUS_ENVIADO,
+                        enviado_por=request.user, timestamp=timezone.now(),
+                    )
+                    Conversacion.objects.filter(pk=conv.pk).update(ultimo_mensaje_at=timezone.now())
+                    messages.success(request, 'Plantilla enviada.')
+                except Exception as e:
+                    messages.error(request, f'Error: {e}')
+
+        params = f'conv={conv.pk}'
+        if request.POST.get('_q'):
+            params += f'&q={request.POST.get("_q")}'
+        from django.urls import reverse
+        return redirect(f"{reverse('whatsapp:inbox')}?{params}")
+
+
+class ConversacionMessagesAPIView(LoginRequiredMixin, View):
+    def get(self, request, pk):
+        conv = get_object_or_404(_get_convs_qs(request.user), pk=pk)
+        since_id = int(request.GET.get('since_id', 0))
+        nuevos = conv.mensajes.filter(pk__gt=since_id).order_by('timestamp')
+        if nuevos.exists():
+            Conversacion.objects.filter(pk=pk).update(mensajes_no_leidos=0)
+        return JsonResponse({'mensajes': [{
+            'id': m.pk, 'direccion': m.direccion, 'tipo': m.tipo,
+            'contenido': m.contenido, 'media_url': m.media_url,
+            'status': m.status, 'timestamp': m.timestamp.strftime('%d/%m %H:%M'),
+            'enviado_por': m.enviado_por.get_full_name() if m.enviado_por else '',
+        } for m in nuevos]})
+
+
+class InboxUpdatesAPIView(LoginRequiredMixin, View):
+    def get(self, request):
+        qs = _get_convs_qs(request.user).filter(mensajes_no_leidos__gt=0)
+        return JsonResponse({
+            'unread_total': qs.count(),
+            'conv_ids': list(qs.values_list('id', flat=True)),
+        })
+
+
+class NuevaConversacionView(LoginRequiredMixin, View):
+    def post(self, request):
+        telefono = request.POST.get('telefono', '').strip()
+        nombre = request.POST.get('nombre', '').strip()
+        contacto_id = request.POST.get('contacto_id', '').strip()
+
+        if not telefono:
+            messages.error(request, 'Ingresá un número de teléfono.')
+            return redirect('whatsapp:inbox')
+        if not telefono.startswith('+'):
+            telefono = '+' + telefono
+
+        # Try to find linked contact
+        contacto = None
+        try:
+            from apps.contacts.models import Contacto
+            if contacto_id:
+                contacto = Contacto.objects.get(pk=int(contacto_id))
+                telefono = contacto.telefono
+                nombre = contacto.nombre
+            else:
+                try:
+                    contacto = Contacto.objects.get(telefono=telefono)
+                    nombre = nombre or contacto.nombre
+                except Contacto.DoesNotExist:
+                    pass
+        except Exception:
+            pass
+
+        conv, _ = Conversacion.objects.get_or_create(
+            telefono=telefono,
+            defaults={
+                'nombre_contacto': nombre or telefono,
+                'agente': request.user,
+                'contacto': contacto,
+            },
+        )
+        if not conv.contacto and contacto:
+            conv.contacto = contacto
+            conv.save(update_fields=['contacto'])
+
+        from django.urls import reverse
+        return redirect(f"{reverse('whatsapp:inbox')}?conv={conv.pk}")
+
+
+class AsignarAgenteView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        if not request.user.can_see_all:
+            return JsonResponse({'ok': False, 'error': 'Sin permisos'}, status=403)
+        conv = get_object_or_404(Conversacion, pk=pk)
+        agente_id = request.POST.get('agente_id') or None
+        conv.agente_id = agente_id
+        conv.save(update_fields=['agente_id'])
+        agente_nombre = ''
+        if agente_id:
+            try:
+                u = User.objects.get(pk=agente_id)
+                agente_nombre = u.get_full_name() or u.username
+            except User.DoesNotExist:
+                pass
+        return JsonResponse({'ok': True, 'agente_nombre': agente_nombre})
+
+
+class ArchivarConversacionView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        conv = get_object_or_404(_get_convs_qs(request.user), pk=pk)
+        conv.archivada = True
+        conv.save(update_fields=['archivada'])
+        return JsonResponse({'ok': True})
+
+
+class BotToggleView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        conv = get_object_or_404(Conversacion, pk=pk)
+        bot_type = request.POST.get('bot_type', '')
+        activo = request.POST.get('activo', 'true').lower() == 'true'
+        if bot_type == 'crm':
+            conv.bot_crm_activo = activo
+            conv.save(update_fields=['bot_crm_activo'])
+        elif bot_type == 'n8n':
+            conv.bot_n8n_activo = activo
+            conv.save(update_fields=['bot_n8n_activo'])
+        else:
+            return JsonResponse({'ok': False, 'error': 'bot_type inválido'}, status=400)
+        return JsonResponse({'ok': True, 'bot_type': bot_type, 'activo': activo})
+
+
+class PlantillaListView(LoginRequiredMixin, ListView):
+    model = PlantillaHSM
+    template_name = 'whatsapp/plantilla_list.html'
+    context_object_name = 'plantillas'
+    paginate_by = 25
+
+
+class PlantillaCreateView(LoginRequiredMixin, View):
+    template_name = 'whatsapp/plantilla_form.html'
+
+    def get(self, request):
+        return render(request, self.template_name)
+
+    def post(self, request):
+        nombre = request.POST.get('nombre', '').strip()
+        cuerpo = request.POST.get('cuerpo', '').strip()
+        if not nombre or not cuerpo:
+            messages.error(request, 'Nombre y cuerpo son requeridos.')
+            return render(request, self.template_name, {'data': request.POST})
+        vars_raw = request.POST.get('variables_raw', '').strip()
+        variables = [v.strip() for v in vars_raw.splitlines() if v.strip()] if vars_raw else []
+        PlantillaHSM.objects.create(nombre=nombre, cuerpo=cuerpo, variables=variables)
+        messages.success(request, 'Plantilla creada.')
+        return redirect('whatsapp:plantilla_list')
+
+
+class PlantillaUpdateView(LoginRequiredMixin, View):
+    template_name = 'whatsapp/plantilla_form.html'
+
+    def get(self, request, pk):
+        p = get_object_or_404(PlantillaHSM, pk=pk)
+        return render(request, self.template_name, {'obj': p})
+
+    def post(self, request, pk):
+        p = get_object_or_404(PlantillaHSM, pk=pk)
+        p.nombre = request.POST.get('nombre', p.nombre).strip()
+        p.cuerpo = request.POST.get('cuerpo', p.cuerpo).strip()
+        vars_raw = request.POST.get('variables_raw', '').strip()
+        p.variables = [v.strip() for v in vars_raw.splitlines() if v.strip()] if vars_raw else []
+        p.activa = request.POST.get('activa') == 'on'
+        p.save()
+        messages.success(request, 'Plantilla actualizada.')
+        return redirect('whatsapp:plantilla_list')
+
+
+class PlantillaDeleteView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        get_object_or_404(PlantillaHSM, pk=pk).delete()
+        messages.success(request, 'Plantilla eliminada.')
+        return redirect('whatsapp:plantilla_list')
+
+
+class ConfigView(SupervisorRequiredMixin, View):
+    template_name = 'whatsapp/config.html'
+
+    def get(self, request):
+        try:
+            config = ConfiguracionWhatsApp.objects.get(pk=1)
+        except ConfiguracionWhatsApp.DoesNotExist:
+            config = ConfiguracionWhatsApp()
+        from .sender import get_connection_state
+        try:
+            state = get_connection_state()
+        except Exception:
+            state = 'error'
+        return render(request, self.template_name, {'config': config, 'connection_state': state})
+
+    def post(self, request):
+        try:
+            config = ConfiguracionWhatsApp.objects.get(pk=1)
+        except ConfiguracionWhatsApp.DoesNotExist:
+            config = ConfiguracionWhatsApp()
+        config.evolution_api_url = request.POST.get('evolution_api_url', '').strip()
+        config.evolution_api_key = request.POST.get('evolution_api_key', '').strip()
+        config.evolution_instance_name = request.POST.get('evolution_instance_name', '').strip() or 'waply'
+        config.webhook_token = request.POST.get('webhook_token', '').strip()
+        config.save()
+        from .sender import setup_instance_webhook, ensure_instance_exists
+        from django.urls import reverse
+        webhook_url = request.build_absolute_uri(reverse('whatsapp:webhook'))
+        ensure_instance_exists()
+        setup_instance_webhook(webhook_url)
+        messages.success(request, 'Configuración guardada. Webhook registrado.')
+        return redirect('whatsapp:config')
+
+
+class QRCodeView(SupervisorRequiredMixin, View):
+    def get(self, request):
+        from .sender import get_qr_code, get_connection_state, ensure_instance_exists
+        try:
+            ensure_instance_exists()
+            state = get_connection_state()
+            if state == 'open' and request.GET.get('force') != '1':
+                return JsonResponse({'connected': True, 'qr_base64': None})
+            qr = get_qr_code(force=request.GET.get('force') == '1')
+            return JsonResponse({'connected': state == 'open', 'qr_base64': qr})
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+
+
+class ConnectionStatusView(LoginRequiredMixin, View):
+    def get(self, request):
+        from .sender import get_connection_state
+        try:
+            state = get_connection_state()
+            return JsonResponse({'state': state, 'connected': state == 'open'})
+        except Exception as e:
+            return JsonResponse({'state': 'error', 'connected': False, 'detail': str(e)})
+
+
+class LogoutInstanceView(SupervisorRequiredMixin, View):
+    def post(self, request):
+        action = request.POST.get('action', 'logout')
+        from .sender import logout_instance, reset_instance
+        try:
+            if action == 'reset':
+                reset_instance()
+            else:
+                logout_instance()
+            return JsonResponse({'ok': True})
+        except Exception as e:
+            return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class APIEnviarMensajeView(View):
+    def post(self, request):
+        from django.conf import settings as dj
+        from .sender import send_text_message, send_media_message
+        api_key = getattr(dj, 'CRM_API_KEY', '')
+        if not api_key or request.headers.get('X-Api-Key', '') != api_key:
+            return JsonResponse({'ok': False, 'error': 'Unauthorized'}, status=401)
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+        phone = data.get('phone', '').strip()
+        message = data.get('message', '').strip()
+        media_url = data.get('media_url', '').strip()
+        media_type = data.get('media_type', 'image')
+        if not phone:
+            return JsonResponse({'ok': False, 'error': '"phone" requerido'}, status=400)
+        if not phone.startswith('+'):
+            phone = '+' + phone
+        try:
+            if media_url:
+                result = send_media_message(phone, media_url, media_type, caption=message)
+                tipo = Mensaje.TIPO_IMAGEN
+            else:
+                result = send_text_message(phone, message)
+                tipo = Mensaje.TIPO_TEXTO
+            conv, _ = Conversacion.objects.get_or_create(telefono=phone, defaults={'nombre_contacto': phone})
+            msg = Mensaje.objects.create(
+                conversacion=conv, direccion=Mensaje.DIR_SALIENTE, tipo=tipo,
+                contenido=message, media_url=media_url,
+                whatsapp_message_id=result.get('id', ''),
+                status=Mensaje.STATUS_ENVIADO, timestamp=timezone.now(),
+            )
+            conv.ultimo_mensaje_at = timezone.now()
+            conv.save(update_fields=['ultimo_mensaje_at'])
+            return JsonResponse({'ok': True, 'message_id': result.get('id', ''), 'conversacion_id': conv.pk})
+        except Exception as e:
+            return JsonResponse({'ok': False, 'error': str(e)}, status=500)
