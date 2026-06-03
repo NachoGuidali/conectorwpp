@@ -80,13 +80,20 @@ class ContactoDetailView(LoginRequiredMixin, View):
         try:
             conv_ids = list(contacto.conversaciones.values_list('pk', flat=True))
             if conv_ids:
-                archivos = list(
-                    MensajeModel.objects.filter(
-                        conversacion_id__in=conv_ids,
-                        tipo__in=['image', 'document', 'audio', 'video']
-                    ).exclude(media_url='').order_by('-timestamp')[:50]
-                    .values('tipo', 'media_url', 'media_filename', 'media_mime', 'timestamp', 'direccion')
-                )
+                qs = MensajeModel.objects.filter(
+                    conversacion_id__in=conv_ids,
+                    tipo__in=['image', 'document', 'audio', 'video']
+                ).exclude(media_url='').order_by('-timestamp')[:50]
+                # Campos opcionales — pueden no existir si la migración no corrió
+                try:
+                    archivos = list(qs.values(
+                        'tipo', 'media_url', 'media_filename', 'media_mime', 'timestamp', 'direccion'
+                    ))
+                except Exception:
+                    archivos = list(qs.values('tipo', 'media_url', 'timestamp', 'direccion'))
+                    for a in archivos:
+                        a.setdefault('media_filename', '')
+                        a.setdefault('media_mime', '')
         except Exception:
             archivos = []
         return render(request, 'contacts/detail.html', {

@@ -169,23 +169,23 @@
           {% endif %}
         </div>
 
-        {% if archivos %}
         <div class="card">
           <div class="card-title">Archivos compartidos</div>
+          {% if archivos %}
           <div style="display:flex; flex-wrap:wrap; gap:8px;">
             {% for a in archivos %}
               {% if a.tipo == 'image' %}
                 <a href="{{ a.media_url }}" target="_blank" title="{{ a.timestamp|date:'d/m/Y H:i' }}">
-                  <img src="{{ a.media_url }}" style="width:72px; height:72px; object-fit:cover; border-radius:6px; border:1px solid var(--border);">
+                  <img src="{{ a.media_url }}" style="width:72px; height:72px; object-fit:cover; border-radius:6px; border:1px solid var(--border);" onerror="this.style.display='none'">
                 </a>
               {% elif a.tipo == 'document' %}
                 <a href="{{ a.media_url }}" target="_blank"
-                   style="display:flex; align-items:center; gap:6px; padding:8px 12px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--text2); text-decoration:none;">
+                   style="display:flex; align-items:center; gap:6px; padding:8px 12px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--text2); text-decoration:none; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                   📄 {{ a.media_filename|default:"Documento" }}
                 </a>
               {% elif a.tipo == 'audio' %}
-                <div style="background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:8px;">
-                  <audio controls style="height:32px; max-width:200px;"><source src="{{ a.media_url }}"></audio>
+                <div style="background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:8px; width:100%;">
+                  <audio controls style="height:32px; width:100%; max-width:280px;"><source src="{{ a.media_url }}"></audio>
                 </div>
               {% elif a.tipo == 'video' %}
                 <a href="{{ a.media_url }}" target="_blank"
@@ -195,8 +195,10 @@
               {% endif %}
             {% endfor %}
           </div>
+          {% else %}
+          <p style="font-size:13px; color:var(--text3);">No hay archivos intercambiados con este contacto aún.</p>
+          {% endif %}
         </div>
-        {% endif %}
       </div>
 
     </div>
