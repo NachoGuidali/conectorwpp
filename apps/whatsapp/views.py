@@ -43,10 +43,25 @@ class WebhookView(View):
     def post(self, request):
         token = request.headers.get('apikey', '')
         configured_token = ConfiguracionWhatsApp.get_setting('webhook_token')
-        if not verify_webhook_token(token, configured_token):
+        # Accept both the configured token AND the Evolution API instance token
+        evo_api_key = ConfiguracionWhatsApp.get_setting('evolution_api_key')
+        if not verify_webhook_token(token, configured_token) and token != evo_api_key:
             return HttpResponse('Forbidden', status=403)
         try:
             payload = json.loads(request.body)
+            event = payload.get('event', '')
+            # Cache QR code delivered by webhook
+            if event == 'QRCODE_UPDATED':
+                from django.core.cache import cache
+                qr_data = payload.get('data', {})
+                qr_b64 = (qr_data.get('qrcode', {}).get('base64') or
+                          qr_data.get('base64') or '')
+                if qr_b64 and ',' in qr_b64:
+                    qr_b64 = qr_b64.split(',', 1)[1]
+                if qr_b64:
+                    cache.set('whatsapp_qr_code', qr_b64, timeout=120)
+                    logger.info('QR code cached from webhook')
+                return HttpResponse('OK', status=200)
             messages_data = parse_incoming_webhook(payload)
             for msg_data in messages_data:
                 process_incoming_message.delay(msg_data)
@@ -369,14 +384,19 @@ class ConfigView(SupervisorRequiredMixin, View):
 
 class QRCodeView(SupervisorRequiredMixin, View):
     def get(self, request):
-        from .sender import get_qr_code, get_connection_state, ensure_instance_exists
+        from .sender import get_connection_state, ensure_instance_exists, trigger_connect
+        from django.core.cache import cache
         try:
             ensure_instance_exists()
             state = get_connection_state()
-            if state == 'open' and request.GET.get('force') != '1':
+            if state == 'open':
+                cache.delete('whatsapp_qr_code')
                 return JsonResponse({'connected': True, 'qr_base64': None})
-            qr = get_qr_code(force=request.GET.get('force') == '1')
-            return JsonResponse({'connected': state == 'open', 'qr_base64': qr})
+            # Trigger connection (once — QR arrives via webhook)
+            trigger_connect()
+            # Serve QR from cache if webhook already delivered it
+            qr = cache.get('whatsapp_qr_code')
+            return JsonResponse({'connected': False, 'qr_base64': qr})
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
 

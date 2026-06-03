@@ -124,49 +124,31 @@ def get_connection_state() -> str:
         return 'error'
 
 
+def trigger_connect() -> None:
+    """Trigger Baileys connection once. QR arrives via QRCODE_UPDATED webhook."""
+    try:
+        requests.get(_evo_url(f'/instance/connect/{_instance()}'),
+                     headers=_evo_headers(), timeout=10)
+    except Exception as e:
+        logger.error('Error triggering connect: %s', e)
+
+
 def get_qr_code(force: bool = False) -> str | None:
+    from django.core.cache import cache
     state = get_connection_state()
     if state == 'open' and not force:
         return None
-    instance = _instance()
-    # Trigger connection first
-    try:
-        requests.get(_evo_url(f'/instance/connect/{instance}'), headers=_evo_headers(), timeout=10)
-    except Exception:
-        pass
-    # v2.2.3 serves QR at /instance/qrcode/{instance} after connect is triggered
-    qr_endpoints = [
-        f'/instance/qrcode/{instance}?image=true',
-        f'/instance/qrcode/{instance}',
-        f'/instance/connect/{instance}',
-    ]
-    for attempt in range(4):
-        for endpoint in qr_endpoints:
-            try:
-                r = requests.get(_evo_url(endpoint), headers=_evo_headers(), timeout=15)
-                if not r.ok:
-                    continue
-                data = r.json()
-                logger.info('QR attempt %d endpoint %s keys: %s', attempt + 1, endpoint,
-                            list(data.keys()) if isinstance(data, dict) else data)
-                qr = (data.get('base64') or
-                      (data.get('qrcode', {}).get('base64') if isinstance(data.get('qrcode'), dict) else None) or
-                      data.get('qr') or None)
-                if qr and ',' in qr:
-                    qr = qr.split(',', 1)[1]
-                if qr:
-                    return qr
-            except Exception as e:
-                logger.error('QR endpoint %s error: %s', endpoint, e)
-        time.sleep(2)
-    return None
+    trigger_connect()
+    return cache.get('whatsapp_qr_code')
 
 
 def setup_instance_webhook(webhook_url: str) -> bool:
     url = _evo_url(f'/webhook/set/{_instance()}')
+    webhook_token = _cfg('webhook_token') or ''
     payload = {'webhook': {
         'enabled': True, 'url': webhook_url, 'webhook_by_events': False, 'webhook_base64': False,
         'events': ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+        'headers': {'apikey': webhook_token} if webhook_token else {},
     }}
     try:
         r = requests.post(url, json=payload, headers=_evo_headers(), timeout=10)
