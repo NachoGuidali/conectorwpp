@@ -112,7 +112,13 @@ def get_connection_state() -> str:
     try:
         r = requests.get(url, headers=_evo_headers(), timeout=10)
         r.raise_for_status()
-        return r.json().get('instance', {}).get('state', 'close')
+        data = r.json()
+        # v2.2.3: {"instance": {"instanceName": "...", "state": "open"}}
+        # v2.2.3 alt: {"connectionStatus": "open"}
+        state = (data.get('instance', {}).get('state') or
+                 data.get('connectionStatus') or
+                 data.get('state') or 'close')
+        return state
     except Exception as e:
         logger.error('Error checking connection state: %s', e)
         return 'error'
@@ -122,23 +128,36 @@ def get_qr_code(force: bool = False) -> str | None:
     state = get_connection_state()
     if state == 'open' and not force:
         return None
-    url = _evo_url(f'/instance/connect/{_instance()}')
-    # Retry up to 4 times — QR is generated asynchronously by Baileys
+    instance = _instance()
+    # Trigger connection first
+    try:
+        requests.get(_evo_url(f'/instance/connect/{instance}'), headers=_evo_headers(), timeout=10)
+    except Exception:
+        pass
+    # v2.2.3 serves QR at /instance/qrcode/{instance} after connect is triggered
+    qr_endpoints = [
+        f'/instance/qrcode/{instance}?image=true',
+        f'/instance/qrcode/{instance}',
+        f'/instance/connect/{instance}',
+    ]
     for attempt in range(4):
-        try:
-            r = requests.get(url, headers=_evo_headers(), timeout=20)
-            r.raise_for_status()
-            data = r.json()
-            logger.info('QR response (attempt %d): %s', attempt + 1, list(data.keys()) if isinstance(data, dict) else data)
-            qr = (data.get('base64') or
-                  data.get('qrcode', {}).get('base64') if isinstance(data.get('qrcode'), dict) else None or
-                  data.get('qr') or None)
-            if qr and ',' in qr:
-                qr = qr.split(',', 1)[1]
-            if qr:
-                return qr
-        except Exception as e:
-            logger.error('Error getting QR code (attempt %d): %s', attempt + 1, e)
+        for endpoint in qr_endpoints:
+            try:
+                r = requests.get(_evo_url(endpoint), headers=_evo_headers(), timeout=15)
+                if not r.ok:
+                    continue
+                data = r.json()
+                logger.info('QR attempt %d endpoint %s keys: %s', attempt + 1, endpoint,
+                            list(data.keys()) if isinstance(data, dict) else data)
+                qr = (data.get('base64') or
+                      (data.get('qrcode', {}).get('base64') if isinstance(data.get('qrcode'), dict) else None) or
+                      data.get('qr') or None)
+                if qr and ',' in qr:
+                    qr = qr.split(',', 1)[1]
+                if qr:
+                    return qr
+            except Exception as e:
+                logger.error('QR endpoint %s error: %s', endpoint, e)
         time.sleep(2)
     return None
 
@@ -147,7 +166,7 @@ def setup_instance_webhook(webhook_url: str) -> bool:
     url = _evo_url(f'/webhook/set/{_instance()}')
     payload = {'webhook': {
         'enabled': True, 'url': webhook_url, 'webhook_by_events': False, 'webhook_base64': False,
-        'events': ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE'],
+        'events': ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
     }}
     try:
         r = requests.post(url, json=payload, headers=_evo_headers(), timeout=10)
@@ -173,21 +192,22 @@ def ensure_instance_exists():
                     return
     except Exception:
         pass
-    try:
-        r = requests.post(
-            _evo_url('/instance/create'),
-            json={'instanceName': instance, 'integration': 'WHATSAPP-BAILEYS'},
-            headers=_evo_headers(), timeout=15,
-        )
-        if r.status_code != 403:
-            r.raise_for_status()
-        logger.info('Evolution API instance "%s" ready', instance)
-    except requests.HTTPError as e:
-        if e.response is not None and e.response.status_code == 403:
-            return
-        logger.error('Error creating instance: %s', e)
-    except Exception as e:
-        logger.error('Error creating instance: %s', e)
+    # v2.2.3+ uses 'name', older versions use 'instanceName' — try both
+    for payload in [
+        {'name': instance, 'integration': 'WHATSAPP-BAILEYS'},
+        {'instanceName': instance, 'integration': 'WHATSAPP-BAILEYS'},
+    ]:
+        try:
+            r = requests.post(
+                _evo_url('/instance/create'),
+                json=payload,
+                headers=_evo_headers(), timeout=15,
+            )
+            if r.ok or r.status_code == 403:
+                logger.info('Evolution API instance "%s" ready', instance)
+                return
+        except Exception as e:
+            logger.error('Error creating instance: %s', e)
 
 
 def logout_instance():
