@@ -202,6 +202,31 @@ class DifusionEnviarView(LoginRequiredMixin, View):
         return redirect('difusiones:detail', pk=pk)
 
 
+class DifusionReanudarView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        difusion = get_object_or_404(Difusion, pk=pk)
+
+        if difusion.estado != Difusion.ESTADO_ENVIANDO:
+            messages.error(request, 'Solo se puede reanudar una difusión en estado "Enviando".')
+            return redirect('difusiones:detail', pk=pk)
+
+        from django.core.cache import cache
+        from .tasks import _lock_key, send_difusion_task
+        if cache.get(_lock_key(difusion.pk)):
+            messages.warning(request, 'La difusión ya está en proceso actualmente.')
+            return redirect('difusiones:detail', pk=pk)
+
+        pendientes = difusion.destinatarios.filter(estado='pending').count()
+        if not pendientes:
+            messages.info(request, 'No hay mensajes pendientes. Marcando como completada.')
+            Difusion.objects.filter(pk=pk).update(estado=Difusion.ESTADO_COMPLETADA)
+            return redirect('difusiones:detail', pk=pk)
+
+        send_difusion_task.delay(difusion.pk)
+        messages.success(request, f'Reanudando difusión — {pendientes} mensajes pendientes.')
+        return redirect('difusiones:detail', pk=pk)
+
+
 # ──────────────────────────────────────────────
 class DifusionEliminarView(LoginRequiredMixin, View):
     def post(self, request, pk):

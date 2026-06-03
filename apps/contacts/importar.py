@@ -108,7 +108,30 @@ def auto_detect_mapping(headers: list) -> dict:
     return mapping
 
 
-def import_from_rows(headers, rows, col_roles, col_tipos, update_existing=True):
+def normalizar_telefono(telefono: str, agregar_prefijo_ar: bool = True) -> str:
+    """Normaliza teléfono al formato WhatsApp. Si agregar_prefijo_ar=True, añade +549 a números locales."""
+    t = re.sub(r'[\s\-().]+', '', telefono.strip())
+    if t.startswith('+'):
+        return t
+    if t.startswith('00'):
+        return '+' + t[2:]
+    t = re.sub(r'\D', '', t)
+    if not t:
+        return telefono
+    # Ya tiene prefijo completo
+    if t.startswith('549'):
+        return '+' + t
+    if t.startswith('54'):
+        return '+' + t
+    if not agregar_prefijo_ar:
+        return '+' + t
+    # Eliminar 0 inicial (formato local argentino: 011..., 0351...)
+    if t.startswith('0'):
+        t = t[1:]
+    return '+549' + t
+
+
+def import_from_rows(headers, rows, col_roles, col_tipos, update_existing=True, agregar_prefijo_ar=True):
     """
     col_roles: {str(col_idx): role}
     col_tipos: {str(col_idx): tipo}  (for role='campo')
@@ -168,8 +191,7 @@ def import_from_rows(headers, rows, col_roles, col_tipos, update_existing=True):
                 skipped += 1
                 continue
 
-            if not telefono.startswith('+'):
-                telefono = '+' + telefono
+            telefono = normalizar_telefono(telefono, agregar_prefijo_ar=agregar_prefijo_ar)
 
             defaults = {'nombre': nombre}
             if email_idx is not None and email_idx < len(row):

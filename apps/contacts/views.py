@@ -390,6 +390,7 @@ class ImportarContactosView(LoginRequiredMixin, View):
                 col_tipos[str(i)] = request.POST.get(f'tipo_{i}', 'text')
 
         update_existing = request.POST.get('update_existing') == 'on'
+        agregar_prefijo_ar = request.POST.get('agregar_prefijo_ar') == 'on'
 
         with open(tmp_path, 'rb') as f:
             headers_full, rows_full, error = parse_file(f, ext)
@@ -406,6 +407,7 @@ class ImportarContactosView(LoginRequiredMixin, View):
 
         created, updated, skipped, errors = import_from_rows(
             headers_full, rows_full, col_roles, col_tipos, update_existing,
+            agregar_prefijo_ar=agregar_prefijo_ar,
         )
 
         msg = f'Importación completa: {created} creados, {updated} actualizados, {skipped} omitidos.'

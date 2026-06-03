@@ -90,6 +90,17 @@
     </form>
     {% endif %}
 
+    {% if difusion.estado == 'sending' and difusion.pendientes %}
+    <form method="post" action="{% url 'difusiones:reanudar' difusion.pk %}" style="display:inline;"
+          onsubmit="return confirm('¿Reanudar el envío? Se enviarán los {{ difusion.pendientes }} mensajes pendientes. Los ya enviados no se repetirán.');">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-outline" style="border-color: #ca8a04; color: #fbbf24;">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Reanudar ({{ difusion.pendientes }} pendientes)
+      </button>
+    </form>
+    {% endif %}
+
     {% if difusion.estado != 'draft' %}
     <a href="{% url 'difusiones:exportar' difusion.pk %}" class="btn btn-outline btn-sm">
       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>

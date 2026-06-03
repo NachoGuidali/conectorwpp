@@ -117,9 +117,14 @@
       <!-- 3. Opciones -->
       <div class="section">
         <div class="section-title">3. Opciones</div>
-        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; color:var(--text2);">
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; color:var(--text2); margin-bottom:10px;">
           <input type="checkbox" name="update_existing" checked style="width:auto;">
           Actualizar contactos existentes que tengan el mismo número de teléfono
+        </label>
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; color:var(--text2);">
+          <input type="checkbox" name="agregar_prefijo_ar" checked style="width:auto;">
+          Agregar prefijo <strong>+549</strong> a números sin código de país
+          <span style="font-size:11px; color:var(--text3);">ej: 1122334455 → +5491122334455</span>
         </label>
       </div>
 
