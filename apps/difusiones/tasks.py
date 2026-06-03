@@ -117,12 +117,47 @@ def send_difusion_task(self, difusion_id: int):
             try:
                 mensaje = _personalizar(mensaje_base, dc)
                 result = send_text_message(dc.telefono, mensaje)
+                msg_id = result.get('id', '')
+                now = timezone.now()
+
                 DifusionContacto.objects.filter(pk=dc.pk).update(
                     estado='sent',
-                    whatsapp_message_id=result.get('id', ''),
-                    enviado_at=timezone.now(),
+                    whatsapp_message_id=msg_id,
+                    enviado_at=now,
                 )
                 Difusion.objects.filter(pk=difusion_id).update(enviados=F('enviados') + 1)
+
+                # Registrar en inbox
+                try:
+                    from apps.whatsapp.models import Conversacion, Mensaje
+                    conv, created = Conversacion.objects.get_or_create(
+                        telefono=dc.telefono,
+                        defaults={
+                            'nombre_contacto': dc.nombre or dc.telefono,
+                            'contacto': dc.contacto,
+                        },
+                    )
+                    if not created:
+                        update_fields = {'ultimo_mensaje_at': now}
+                        if not conv.contacto_id and dc.contacto_id:
+                            update_fields['contacto_id'] = dc.contacto_id
+                        if not conv.nombre_contacto and dc.nombre:
+                            update_fields['nombre_contacto'] = dc.nombre
+                        Conversacion.objects.filter(pk=conv.pk).update(**update_fields)
+                    else:
+                        Conversacion.objects.filter(pk=conv.pk).update(ultimo_mensaje_at=now)
+
+                    Mensaje.objects.create(
+                        conversacion=conv,
+                        whatsapp_message_id=msg_id,
+                        direccion=Mensaje.DIR_SALIENTE,
+                        tipo=Mensaje.TIPO_TEXTO,
+                        contenido=mensaje,
+                        status=Mensaje.STATUS_ENVIADO,
+                        timestamp=now,
+                    )
+                except Exception as inbox_err:
+                    logger.warning('Error registrando en inbox para %s: %s', dc.telefono, inbox_err)
             except Exception as e:
                 logger.error('Difusion %s: error sending to %s: %s', difusion_id, dc.telefono, e)
                 DifusionContacto.objects.filter(pk=dc.pk).update(

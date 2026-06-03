@@ -1,4 +1,5 @@
 import logging
+import requests
 from datetime import timedelta
 from celery import shared_task
 from django.utils import timezone
@@ -62,9 +63,43 @@ def process_incoming_message(self, message_data: dict):
             timestamp=message_data.get('timestamp', timezone.now()),
         )
 
+        # Reenviar a n8n si el bot está activo
+        if conv.bot_n8n_activo:
+            _forward_to_n8n(conv, message_data)
+
     except Exception as exc:
         logger.exception('Error processing message from %s: %s', phone, exc)
         raise self.retry(exc=exc)
+
+
+def _forward_to_n8n(conv, message_data: dict):
+    from django.conf import settings
+    n8n_url = getattr(settings, 'N8N_WEBHOOK_URL', '').strip()
+    if not n8n_url:
+        return
+    crm_api_key = getattr(settings, 'CRM_API_KEY', '')
+    public_url = getattr(settings, 'PUBLIC_URL', '')
+    payload = {
+        'event': 'message_received',
+        'phone': message_data.get('from_phone', ''),
+        'contact_name': conv.nombre_contacto or '',
+        'message': message_data.get('content', ''),
+        'message_type': message_data.get('type', 'text'),
+        'message_id': message_data.get('message_id', ''),
+        'conversation_id': conv.pk,
+        'timestamp': message_data.get('timestamp', timezone.now()).isoformat()
+            if hasattr(message_data.get('timestamp', ''), 'isoformat')
+            else str(message_data.get('timestamp', '')),
+        # Para que n8n pueda responder de vuelta al CRM:
+        'crm_reply_url': f'{public_url}/whatsapp/api/enviar/',
+        'crm_api_key': crm_api_key,
+    }
+    try:
+        r = requests.post(n8n_url, json=payload, timeout=10)
+        r.raise_for_status()
+        logger.info('Mensaje reenviado a n8n para conv %s (status %s)', conv.pk, r.status_code)
+    except Exception as e:
+        logger.warning('Error reenviando a n8n conv %s: %s', conv.pk, e)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
