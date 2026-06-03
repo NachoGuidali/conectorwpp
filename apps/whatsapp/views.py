@@ -54,13 +54,15 @@ class WebhookView(View):
             if event in ('QRCODE_UPDATED', 'qrcode.updated'):
                 from django.core.cache import cache
                 qr_data = payload.get('data', {})
-                qr_b64 = (qr_data.get('qrcode', {}).get('base64') or
-                          qr_data.get('base64') or '')
+                qr_obj = qr_data.get('qrcode', qr_data)
+                qr_code = qr_obj.get('code', '')
+                qr_b64 = qr_obj.get('base64', '')
                 if qr_b64 and ',' in qr_b64:
                     qr_b64 = qr_b64.split(',', 1)[1]
-                if qr_b64:
-                    cache.set('whatsapp_qr_code', qr_b64, timeout=120)
-                    logger.info('QR code cached from webhook')
+                if qr_code:
+                    cache.set('whatsapp_qr_code', qr_b64, timeout=55)
+                    cache.set('whatsapp_qr_text', qr_code, timeout=55)
+                    logger.info('QR code cached from webhook (code len=%d)', len(qr_code))
                 return HttpResponse('OK', status=200)
             messages_data = parse_incoming_webhook(payload)
             for msg_data in messages_data:
@@ -393,10 +395,11 @@ class QRCodeView(SupervisorRequiredMixin, View):
                 cache.delete('whatsapp_qr_code')
                 return JsonResponse({'connected': True, 'qr_base64': None})
             # Only trigger connect if no QR in cache yet
-            qr = cache.get('whatsapp_qr_code')
-            if not qr:
+            qr_text = cache.get('whatsapp_qr_text')
+            qr_b64 = cache.get('whatsapp_qr_code')
+            if not qr_text:
                 trigger_connect()
-            return JsonResponse({'connected': False, 'qr_base64': qr})
+            return JsonResponse({'connected': False, 'qr_base64': qr_b64, 'qr_code': qr_text})
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
 

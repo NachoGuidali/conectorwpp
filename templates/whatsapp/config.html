@@ -154,8 +154,23 @@
 </div>
 
 {% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 const CSRF = '{{ csrf_token }}';
+
+function renderQR(container, qrCode) {
+  container.innerHTML = '';
+  const div = document.createElement('div');
+  container.appendChild(div);
+  new QRCode(div, {
+    text: qrCode,
+    width: 280,
+    height: 280,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M,
+  });
+}
 
 async function refreshQR() {
   const container = document.getElementById('qr-container');
@@ -165,11 +180,14 @@ async function refreshQR() {
     const data = await res.json();
     if (data.connected) {
       container.innerHTML = '<div class="qr-placeholder"><p style="color:var(--green);">✓ WhatsApp conectado</p></div>';
+      if (typeof qrPollInterval !== 'undefined') clearInterval(qrPollInterval);
+    } else if (data.qr_code) {
+      renderQR(container, data.qr_code);
     } else if (data.qr_base64) {
       const src = data.qr_base64.startsWith('data:') ? data.qr_base64 : `data:image/png;base64,${data.qr_base64}`;
-      container.innerHTML = `<img src="${src}" alt="QR">`;
+      container.innerHTML = `<img src="${src}" alt="QR" style="max-width:280px;">`;
     } else {
-      container.innerHTML = '<div class="qr-placeholder"><p>No se pudo obtener el QR. Verificá la configuración.</p></div>';
+      container.innerHTML = '<div class="qr-placeholder"><p style="color:var(--text3);">Generando QR... esperá unos segundos.</p></div>';
     }
   } catch(e) {
     container.innerHTML = '<div class="qr-placeholder"><p style="color:var(--red);">Error de conexión</p></div>';
@@ -196,7 +214,26 @@ async function logoutInstance() {
 
 // Auto-cargar QR si está desconectado
 {% if connection_state != 'open' %}
-setTimeout(refreshQR, 500);
+let qrPollInterval = null;
+function startQRPolling() {
+  refreshQR();
+  qrPollInterval = setInterval(async () => {
+    const res = await fetch('/whatsapp/config/qr/?force=1').catch(() => null);
+    if (!res) return;
+    const data = await res.json();
+    const c = document.getElementById('qr-container');
+    if (data.connected) {
+      clearInterval(qrPollInterval);
+      c.innerHTML = '<div class="qr-placeholder"><p style="color:var(--green);">✓ WhatsApp conectado</p></div>';
+    } else if (data.qr_code) {
+      renderQR(c, data.qr_code);
+    } else if (data.qr_base64) {
+      const src = data.qr_base64.startsWith('data:') ? data.qr_base64 : `data:image/png;base64,${data.qr_base64}`;
+      c.innerHTML = `<img src="${src}" alt="QR" style="max-width:280px;">`;
+    }
+  }, 5000);
+}
+setTimeout(startQRPolling, 500);
 {% endif %}
 
 // Auto-refresh estado cada 10s
