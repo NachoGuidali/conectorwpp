@@ -87,13 +87,15 @@ def send_media_message(to: str, media_url: str, mediatype: str, filename: str = 
     response = None
     try:
         response = requests.post(url, json=payload, headers=_evo_headers(), timeout=30)
+        if not response.ok:
+            logger.error('sendMedia API error %s: %s', response.status_code, response.text[:500])
         response.raise_for_status()
         return {'id': _extract_message_id(response.json())}
     except requests.RequestException as e:
         logger.error('Error sending media to %s: %s', to, e)
         raise
     finally:
-        _log_request(url, 'POST', payload, response, int((time.monotonic() - start) * 1000))
+        _log_request(url, 'POST', {**payload, 'media': payload['media'][:80] + '...' if len(str(payload.get('media', ''))) > 80 else payload.get('media', '')}, response, int((time.monotonic() - start) * 1000))
 
 
 def send_interactive_message(to: str, body_text: str, buttons: list, header_text: str = '', footer_text: str = '') -> dict:

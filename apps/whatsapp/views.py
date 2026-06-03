@@ -307,16 +307,26 @@ class EnviarMediaView(LoginRequiredMixin, View):
         try:
             raw = archivo.read()
             b64 = base64.b64encode(raw).decode('utf-8')
-            media_data = f'data:{mime};base64,{b64}'
-
-            result = send_media_message(
-                conv.telefono, media_data, mediatype,
-                filename=filename, caption=caption,
-            )
+            # Evolution API v2: some versions need raw base64, others need data URI
+            # Try raw base64 first; if 400, retry with data URI
+            result = None
+            last_exc = None
+            for media_data in [b64, f'data:{mime};base64,{b64}']:
+                try:
+                    result = send_media_message(
+                        conv.telefono, media_data, mediatype,
+                        filename=filename, caption=caption,
+                    )
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    logger.warning('Retry con formato alternativo para media...')
+            if result is None:
+                raise last_exc
             msg_id = result.get('id', '')
         except Exception as e:
             logger.error('Error enviando media a %s: %s', conv.telefono, e)
-            return JsonResponse({'ok': False, 'error': 'Error al enviar el archivo.'}, status=500)
+            return JsonResponse({'ok': False, 'error': f'Error al enviar el archivo: {str(e)[:100]}'}, status=500)
 
         # Registrar en DB
         tipo_map = {'image': Mensaje.TIPO_IMAGEN, 'video': Mensaje.TIPO_VIDEO,
