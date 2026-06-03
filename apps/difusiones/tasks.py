@@ -15,23 +15,38 @@ def _personalizar(mensaje: str, dc) -> str:
     """Sustituye {variables} en el mensaje con datos del contacto."""
     if '{' not in mensaje:
         return mensaje
+
     contacto = dc.contacto
-    if not contacto:
-        # Sin contacto vinculado, solo sustituir nombre/telefono del snapshot
-        return (mensaje
-                .replace('{nombre}', dc.nombre or '')
-                .replace('{telefono}', dc.telefono or ''))
+    # Siempre incluir el snapshot como fallback
     vals = {
-        'nombre': contacto.nombre or '',
-        'telefono': contacto.telefono or '',
-        'email': contacto.email or '',
-        'grupo': contacto.grupo or '',
+        'nombre': dc.nombre or '',
+        'telefono': dc.telefono or '',
+        'email': '',
+        'grupo': '',
     }
-    for campo, valor in contacto.valores.select_related('campo').values_list('campo__nombre', 'valor'):
-        vals[campo] = valor or ''
+
+    if contacto:
+        vals.update({
+            'nombre': contacto.nombre or dc.nombre or '',
+            'telefono': contacto.telefono or dc.telefono or '',
+            'email': contacto.email or '',
+            'grupo': contacto.grupo or '',
+        })
+        # Campos personalizados — iterar objetos con prefetch
+        try:
+            for vc in contacto.valores.select_related('campo').all():
+                if vc.campo_id and vc.campo:
+                    vals[vc.campo.nombre] = vc.valor or ''
+        except Exception as e:
+            logger.warning('Error cargando campos personalizados para %s: %s', dc.telefono, e)
+
     result = mensaje
     for key, value in vals.items():
         result = result.replace(f'{{{key}}}', value)
+
+    if result != mensaje:
+        logger.info('Variables sustituidas para %s: %s → %s', dc.telefono, list(vals.keys()), result[:80])
+
     return result
 
 

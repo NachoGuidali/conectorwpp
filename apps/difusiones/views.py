@@ -52,6 +52,12 @@ def _context_base():
         'fecha_opciones': FECHA_OPCIONES,
         'operadores_por_tipo': json.dumps(OPERADORES_POR_TIPO),
         'variables_disponibles': variables_disponibles,
+        'campo_fijos': [
+            ('nombre', 'Nombre del contacto'),
+            ('telefono', 'Teléfono'),
+            ('email', 'Email'),
+            ('grupo', 'Grupo'),
+        ],
     }
 
 

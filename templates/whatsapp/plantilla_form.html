@@ -62,13 +62,14 @@
           </div>
 
           <div class="info-box">
-            <strong>¿Cómo usar variables?</strong><br>
-            En el cuerpo escribí <code>&#123;&#123;1&#125;&#125;</code>, <code>&#123;&#123;2&#125;&#125;</code>, <code>&#123;&#123;3&#125;&#125;</code>… donde querés que aparezca cada dato.<br>
-            Luego en <em>Nombres de variables</em> escribí el nombre de cada una, una por línea, en el mismo orden.<br><br>
-            <strong>Ejemplo:</strong><br>
-            Cuerpo: <code>Hola &#123;&#123;1&#125;&#125;, tu plan &#123;&#123;2&#125;&#125; vence el &#123;&#123;3&#125;&#125;.</code><br>
-            Variables: <code>nombre</code> / <code>plan</code> / <code>fecha_vencimiento</code><br>
-            Resultado: <em>Hola Juan, tu plan Premium vence el 30/06.</em>
+            <strong>Sistema de variables — dos opciones:</strong><br><br>
+            <strong>1. Variables fijas</strong> (mismo valor para todos los destinatarios):<br>
+            Usá <code>&#123;&#123;1&#125;&#125;</code>, <code>&#123;&#123;2&#125;&#125;</code>… en el cuerpo. Al enviar una difusión, completás cada valor manualmente.<br>
+            Ejemplo: <code>Hola &#123;&#123;1&#125;&#125;, tu plan es &#123;&#123;2&#125;&#125;.</code> → completás "Juan" y "Premium" al crear la difusión.<br><br>
+            <strong>2. Variables por contacto</strong> (valor distinto para cada destinatario):<br>
+            Usá <code>&#123;nombre&#125;</code>, <code>&#123;telefono&#125;</code>, <code>&#123;email&#125;</code>, <code>&#123;grupo&#125;</code> o cualquier campo personalizado del Excel.<br>
+            Ejemplo: <code>Hola &#123;nombre&#125;, tu saldo es &#123;saldo_pendiente&#125;.</code> → cada contacto recibe su nombre y saldo real.<br><br>
+            <strong>Podés combinar ambas</strong> en el mismo mensaje.
           </div>
 
           <div class="form-group">
