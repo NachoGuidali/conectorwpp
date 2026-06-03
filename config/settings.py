@@ -95,8 +95,10 @@ REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = 'django-db'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_TASK_DEFAULT_QUEUE = 'default'
 CELERY_TASK_ROUTES = {
     'apps.whatsapp.*': {'queue': 'whatsapp'},
+    'apps.difusiones.*': {'queue': 'default'},
 }
 
 # Evolution API

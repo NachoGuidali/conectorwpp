@@ -161,9 +161,11 @@ class DifusionCreateView(LoginRequiredMixin, View):
         ], ignore_conflicts=True)
 
         if accion == 'send':
-            return redirect('difusiones:enviar', pk=difusion.pk)
-
-        messages.success(request, f'Difusión "{nombre}" creada con {len(contactos)} destinatarios.')
+            from .tasks import send_difusion_task
+            send_difusion_task.delay(difusion.pk)
+            messages.success(request, f'Difusión "{nombre}" creada y enviando a {len(contactos)} destinatarios.')
+        else:
+            messages.success(request, f'Difusión "{nombre}" creada con {len(contactos)} destinatarios.')
         return redirect('difusiones:detail', pk=difusion.pk)
 
 
