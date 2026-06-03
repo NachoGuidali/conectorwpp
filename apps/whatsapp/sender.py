@@ -123,18 +123,24 @@ def get_qr_code(force: bool = False) -> str | None:
     if state == 'open' and not force:
         return None
     url = _evo_url(f'/instance/connect/{_instance()}')
-    try:
-        r = requests.get(url, headers=_evo_headers(), timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        qr = (data.get('base64') or data.get('qrcode', {}).get('base64') or
-              data.get('qr') or None)
-        if qr and ',' in qr:
-            qr = qr.split(',', 1)[1]
-        return qr
-    except Exception as e:
-        logger.error('Error getting QR code: %s', e)
-        return None
+    # Retry up to 4 times — QR is generated asynchronously by Baileys
+    for attempt in range(4):
+        try:
+            r = requests.get(url, headers=_evo_headers(), timeout=20)
+            r.raise_for_status()
+            data = r.json()
+            logger.info('QR response (attempt %d): %s', attempt + 1, list(data.keys()) if isinstance(data, dict) else data)
+            qr = (data.get('base64') or
+                  data.get('qrcode', {}).get('base64') if isinstance(data.get('qrcode'), dict) else None or
+                  data.get('qr') or None)
+            if qr and ',' in qr:
+                qr = qr.split(',', 1)[1]
+            if qr:
+                return qr
+        except Exception as e:
+            logger.error('Error getting QR code (attempt %d): %s', attempt + 1, e)
+        time.sleep(2)
+    return None
 
 
 def setup_instance_webhook(webhook_url: str) -> bool:
@@ -159,12 +165,12 @@ def ensure_instance_exists():
         r = requests.get(_evo_url('/instance/fetchInstances'), headers=_evo_headers(), timeout=10)
         if r.ok:
             instances = r.json()
-            existing = [
-                i.get('instance', {}).get('instanceName', '') or i.get('instanceName', '')
-                for i in (instances if isinstance(instances, list) else [])
-            ]
-            if instance in existing:
-                return
+            for i in (instances if isinstance(instances, list) else []):
+                name = (i.get('instance', {}).get('instanceName') or
+                        i.get('instanceName') or
+                        i.get('name') or '')
+                if name == instance:
+                    return
     except Exception:
         pass
     try:

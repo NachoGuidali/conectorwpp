@@ -311,7 +311,7 @@ class PlantillaUpdateView(LoginRequiredMixin, View):
 
     def get(self, request, pk):
         p = get_object_or_404(PlantillaHSM, pk=pk)
-        return render(request, self.template_name, {'obj': p})
+        return render(request, self.template_name, {'obj': p, 'data': {}})
 
     def post(self, request, pk):
         p = get_object_or_404(PlantillaHSM, pk=pk)

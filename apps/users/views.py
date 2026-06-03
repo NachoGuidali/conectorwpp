@@ -60,7 +60,7 @@ class UserUpdateView(AdminRequiredMixin, View):
 
     def get(self, request, pk):
         user = get_object_or_404(User, pk=pk)
-        return render(request, self.template_name, {'obj': user, 'rol_choices': User.ROL_CHOICES})
+        return render(request, self.template_name, {'obj': user, 'rol_choices': User.ROL_CHOICES, 'data': {}})
 
     def post(self, request, pk):
         user = get_object_or_404(User, pk=pk)
