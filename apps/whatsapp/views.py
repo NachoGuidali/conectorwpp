@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -300,9 +301,28 @@ class EnviarMediaView(LoginRequiredMixin, View):
         if archivo.size > max_bytes:
             return JsonResponse({'ok': False, 'error': f'El archivo supera los {self.MAX_SIZE_MB}MB.'}, status=400)
 
+        import os
+        from django.conf import settings as dj_settings
+
         mime = archivo.content_type or 'application/octet-stream'
         mediatype = get_mediatype(mime)
         filename = archivo.name or 'archivo'
+
+        # Guardar localmente para tener URL de referencia
+        local_url = ''
+        try:
+            upload_dir = os.path.join(dj_settings.MEDIA_ROOT, 'uploads', f'conv_{pk}')
+            os.makedirs(upload_dir, exist_ok=True)
+            safe_name = re.sub(r'[^\w.\-]', '_', filename)
+            local_path = os.path.join(upload_dir, safe_name)
+            archivo.seek(0)
+            with open(local_path, 'wb') as f:
+                for chunk in archivo.chunks():
+                    f.write(chunk)
+            local_url = f'{dj_settings.MEDIA_URL}uploads/conv_{pk}/{safe_name}'
+            archivo.seek(0)
+        except Exception as save_err:
+            logger.warning('No se pudo guardar archivo localmente: %s', save_err)
 
         try:
             raw = archivo.read()
@@ -337,6 +357,7 @@ class EnviarMediaView(LoginRequiredMixin, View):
             direccion=Mensaje.DIR_SALIENTE,
             tipo=tipo_map.get(mediatype, Mensaje.TIPO_DOCUMENTO),
             contenido=caption,
+            media_url=local_url,
             media_mime=mime,
             media_filename=filename,
             status=Mensaje.STATUS_ENVIADO,

@@ -83,7 +83,7 @@ class ContactoDetailView(LoginRequiredMixin, View):
                 qs = MensajeModel.objects.filter(
                     conversacion_id__in=conv_ids,
                     tipo__in=['image', 'document', 'audio', 'video']
-                ).exclude(media_url='').order_by('-timestamp')[:50]
+                ).order_by('-timestamp')[:50]
                 # Campos opcionales — pueden no existir si la migración no corrió
                 try:
                     archivos = list(qs.values(

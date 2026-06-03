@@ -1,5 +1,7 @@
+import base64
 import json
 import logging
+import os
 import time
 
 import requests
@@ -228,3 +230,61 @@ def reset_instance():
         requests.post(_evo_url(f'/instance/restart/{instance}'), headers=_evo_headers(), timeout=10)
     except Exception:
         pass
+
+
+def download_and_save_media(message_id: str, conv_pk: int, filename: str = '') -> str:
+    """
+    Descarga el archivo de media de Evolution API (desencriptado) y lo guarda
+    localmente. Devuelve la URL local o '' si falla.
+    """
+    try:
+        url = _evo_url(f'/chat/getBase64FromMediaMessage/{_instance()}')
+        r = requests.post(
+            url,
+            json={'message': {'key': {'id': message_id}}},
+            headers=_evo_headers(),
+            timeout=30,
+        )
+        if not r.ok:
+            logger.warning('getBase64FromMediaMessage %s: %s', r.status_code, r.text[:200])
+            return ''
+        data = r.json()
+        b64 = data.get('base64') or data.get('data') or ''
+        if not b64:
+            logger.warning('No base64 en respuesta de media para msg %s', message_id)
+            return ''
+        # Quitar prefijo data:mime;base64, si viene
+        if ',' in b64:
+            b64 = b64.split(',', 1)[1]
+        mime = data.get('mimetype') or data.get('mediaType') or 'application/octet-stream'
+        ext = _ext_from_mime(mime, filename)
+        safe_name = f'{message_id[:16]}{ext}'
+        upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads', f'conv_{conv_pk}')
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, safe_name)
+        with open(file_path, 'wb') as f:
+            f.write(base64.b64decode(b64))
+        local_url = f'{settings.MEDIA_URL}uploads/conv_{conv_pk}/{safe_name}'
+        logger.info('Media guardada: %s', local_url)
+        return local_url
+    except Exception as e:
+        logger.error('Error descargando media %s: %s', message_id, e)
+        return ''
+
+
+def _ext_from_mime(mime: str, original_filename: str = '') -> str:
+    """Devuelve la extensión correcta según el MIME type."""
+    if original_filename and '.' in original_filename:
+        return '.' + original_filename.rsplit('.', 1)[-1].lower()
+    mime_map = {
+        'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif',
+        'image/webp': '.webp', 'image/heic': '.heic',
+        'audio/ogg': '.ogg', 'audio/mpeg': '.mp3', 'audio/mp4': '.m4a',
+        'audio/wav': '.wav', 'audio/opus': '.opus',
+        'video/mp4': '.mp4', 'video/3gpp': '.3gp', 'video/webm': '.webm',
+        'application/pdf': '.pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+        'application/msword': '.doc', 'application/vnd.ms-excel': '.xls',
+    }
+    return mime_map.get(mime, '.bin')

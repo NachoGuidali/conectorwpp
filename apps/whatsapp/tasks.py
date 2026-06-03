@@ -52,13 +52,27 @@ def process_incoming_message(self, message_data: dict):
         conv.ventana_expira_at = timezone.now() + timedelta(hours=24)
         conv.save()
 
+        msg_type = message_data.get('type', Mensaje.TIPO_TEXTO)
+        media_url = message_data.get('media_url', '')
+        message_id = message_data.get('message_id', '')
+
+        # Para media recibida, descargar y guardar localmente (evita .enc)
+        if msg_type in ('image', 'audio', 'video', 'document', 'sticker') and message_id:
+            from .sender import download_and_save_media
+            local_url = download_and_save_media(
+                message_id, conv.pk,
+                filename=message_data.get('media_filename', ''),
+            )
+            if local_url:
+                media_url = local_url
+
         Mensaje.objects.create(
             conversacion=conv,
-            whatsapp_message_id=message_data.get('message_id', ''),
+            whatsapp_message_id=message_id,
             direccion=Mensaje.DIR_ENTRANTE,
-            tipo=message_data.get('type', Mensaje.TIPO_TEXTO),
+            tipo=msg_type,
             contenido=message_data.get('content', ''),
-            media_url=message_data.get('media_url', ''),
+            media_url=media_url,
             media_id=message_data.get('media_id', ''),
             media_mime=message_data.get('media_mime', ''),
             media_filename=message_data.get('media_filename', ''),

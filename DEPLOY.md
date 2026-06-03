@@ -250,7 +250,7 @@ server {
     }
 
     location /media/ {
-        alias /opt/conectorwpp/media/;
+        alias /opt/conectorwpp/conectorwpp/media/;
         expires 7d;
     }
 
