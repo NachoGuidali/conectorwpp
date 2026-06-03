@@ -17,6 +17,7 @@ urlpatterns = [
     path('conversacion/<int:pk>/asignar/', views.AsignarAgenteView.as_view(), name='asignar_agente'),
     path('conversacion/<int:pk>/archivar/', views.ArchivarConversacionView.as_view(), name='archivar'),
     path('conversacion/<int:pk>/bot-toggle/', views.BotToggleView.as_view(), name='bot_toggle'),
+    path('conversacion/<int:pk>/enviar-media/', views.EnviarMediaView.as_view(), name='enviar_media'),
 
     # Plantillas
     path('plantillas/', views.PlantillaListView.as_view(), name='plantilla_list'),

@@ -65,6 +65,17 @@ def send_text_message(to: str, body: str) -> dict:
         _log_request(url, 'POST', payload, response, int((time.monotonic() - start) * 1000))
 
 
+def get_mediatype(mime: str) -> str:
+    """Devuelve el tipo de medio para Evolution API según el MIME type."""
+    if mime.startswith('image/'):
+        return 'image'
+    if mime.startswith('video/'):
+        return 'video'
+    if mime.startswith('audio/'):
+        return 'audio'
+    return 'document'
+
+
 def send_media_message(to: str, media_url: str, mediatype: str, filename: str = '', caption: str = '') -> dict:
     url = _evo_url(f'/message/sendMedia/{_instance()}')
     payload = {'number': _normalize_phone(to), 'mediatype': mediatype, 'media': media_url}

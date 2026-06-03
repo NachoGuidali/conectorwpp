@@ -282,6 +282,73 @@ class ArchivarConversacionView(LoginRequiredMixin, View):
         return JsonResponse({'ok': True})
 
 
+class EnviarMediaView(LoginRequiredMixin, View):
+    MAX_SIZE_MB = 16
+
+    def post(self, request, pk):
+        import base64
+        from .sender import send_media_message, get_mediatype
+
+        conv = get_object_or_404(Conversacion, pk=pk)
+        archivo = request.FILES.get('archivo')
+        caption = request.POST.get('caption', '').strip()
+
+        if not archivo:
+            return JsonResponse({'ok': False, 'error': 'No se recibió ningún archivo.'}, status=400)
+
+        max_bytes = self.MAX_SIZE_MB * 1024 * 1024
+        if archivo.size > max_bytes:
+            return JsonResponse({'ok': False, 'error': f'El archivo supera los {self.MAX_SIZE_MB}MB.'}, status=400)
+
+        mime = archivo.content_type or 'application/octet-stream'
+        mediatype = get_mediatype(mime)
+        filename = archivo.name or 'archivo'
+
+        try:
+            raw = archivo.read()
+            b64 = base64.b64encode(raw).decode('utf-8')
+            media_data = f'data:{mime};base64,{b64}'
+
+            result = send_media_message(
+                conv.telefono, media_data, mediatype,
+                filename=filename, caption=caption,
+            )
+            msg_id = result.get('id', '')
+        except Exception as e:
+            logger.error('Error enviando media a %s: %s', conv.telefono, e)
+            return JsonResponse({'ok': False, 'error': 'Error al enviar el archivo.'}, status=500)
+
+        # Registrar en DB
+        tipo_map = {'image': Mensaje.TIPO_IMAGEN, 'video': Mensaje.TIPO_VIDEO,
+                    'audio': Mensaje.TIPO_AUDIO, 'document': Mensaje.TIPO_DOCUMENTO}
+        msg = Mensaje.objects.create(
+            conversacion=conv,
+            whatsapp_message_id=msg_id,
+            direccion=Mensaje.DIR_SALIENTE,
+            tipo=tipo_map.get(mediatype, Mensaje.TIPO_DOCUMENTO),
+            contenido=caption,
+            media_mime=mime,
+            media_filename=filename,
+            status=Mensaje.STATUS_ENVIADO,
+            timestamp=timezone.now(),
+            enviado_por=request.user,
+        )
+        Conversacion.objects.filter(pk=conv.pk).update(ultimo_mensaje_at=timezone.now())
+
+        return JsonResponse({
+            'ok': True,
+            'mensaje': {
+                'pk': msg.pk,
+                'tipo': msg.tipo,
+                'contenido': caption,
+                'media_filename': filename,
+                'media_mime': mime,
+                'timestamp': msg.timestamp.strftime('%H:%M'),
+                'enviado_por': request.user.get_full_name() or request.user.username,
+            }
+        })
+
+
 class BotToggleView(LoginRequiredMixin, View):
     def post(self, request, pk):
         conv = get_object_or_404(Conversacion, pk=pk)

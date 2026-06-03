@@ -271,6 +271,54 @@
   .msg-doc-link:hover { text-decoration: underline; }
   .msg-audio { max-width: 250px; height: 36px; }
   .msg-caption { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
+  /* Attach button */
+  .attach-btn {
+    background: none; border: none; cursor: pointer; padding: 8px;
+    color: var(--text3); border-radius: var(--radius-sm); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: color .15s, background .15s;
+  }
+  .attach-btn:hover { color: var(--green); background: var(--bg3); }
+
+  /* Media preview bar */
+  .media-preview-bar {
+    display: none;
+    align-items: center; gap: 10px;
+    padding: 8px 12px; background: var(--bg2);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .media-preview-bar.visible { display: flex; }
+  .media-preview-thumb {
+    width: 48px; height: 48px; object-fit: cover;
+    border-radius: 6px; border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .media-preview-doc {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px;
+    font-size: 12px; color: var(--text2); flex-shrink: 0;
+  }
+  .media-preview-caption {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 6px 10px;
+    color: var(--text); font-size: 13px; font-family: inherit; outline: none;
+  }
+  .media-preview-caption:focus { border-color: var(--green); }
+  .media-preview-remove {
+    background: none; border: none; cursor: pointer;
+    color: var(--text3); font-size: 18px; padding: 4px; line-height: 1;
+    flex-shrink: 0;
+  }
+  .media-preview-remove:hover { color: var(--red); }
+  .media-sending-overlay {
+    display: none; position: absolute; inset: 0;
+    background: rgba(0,0,0,.4); border-radius: var(--radius-sm);
+    align-items: center; justify-content: center;
+    color: #fff; font-size: 12px; z-index: 10;
+  }
 </style>
 {% endblock %}
 
@@ -405,21 +453,45 @@
     </div>
 
     <div class="chat-input-area">
+      <!-- Barra de previsualización de archivo -->
+      <div class="media-preview-bar" id="media-preview-bar">
+        <div id="media-preview-content"></div>
+        <input type="text" class="media-preview-caption" id="media-caption"
+               placeholder="Agregar descripción (opcional)...">
+        <button type="button" class="media-preview-remove" onclick="cancelMedia()" title="Cancelar">×</button>
+      </div>
+
       <form method="post" id="send-form">
         {% csrf_token %}
         <input type="hidden" name="conv_pk" value="{{ selected_conv.pk }}">
         <input type="hidden" name="action" value="send_text">
         {% if q %}<input type="hidden" name="_q" value="{{ q }}">{% endif %}
+
+        <!-- Input oculto para archivo -->
+        <input type="file" id="attach-input" style="display:none;"
+               accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+               onchange="handleFileSelect(this)">
+
         <div class="input-row">
           <button type="button" class="template-btn" onclick="openTemplateModal()" title="Plantillas">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
             </svg>
           </button>
+          <button type="button" class="attach-btn" onclick="document.getElementById('attach-input').click()" title="Adjuntar archivo">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+            </svg>
+          </button>
           <textarea class="msg-textarea" name="body" id="msg-input"
                     placeholder="Escribí un mensaje..." rows="1"
                     onkeydown="handleEnter(event)"></textarea>
-          <button type="submit" class="send-btn">
+          <button type="submit" class="send-btn" id="send-text-btn">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+            </svg>
+          </button>
+          <button type="button" class="send-btn" id="send-media-btn" style="display:none;" onclick="sendMedia()">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
             </svg>
@@ -608,23 +680,27 @@ function renderContenido(msg) {
   const url = msg.media_url || '';
   const fname = msg.media_filename || '';
   const caption = msg.contenido ? `<div class="msg-caption">${escHtml(msg.contenido)}</div>` : '';
+  const docIcon = `<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>`;
 
-  if (tipo === 'image' && url) {
-    return `<a href="${escHtml(url)}" target="_blank" rel="noopener"><img src="${escHtml(url)}" class="msg-media-img" onerror="this.parentElement.innerHTML='[Imagen]'"></a>${caption}`;
+  if (tipo === 'image') {
+    if (url) return `<a href="${escHtml(url)}" target="_blank" rel="noopener"><img src="${escHtml(url)}" class="msg-media-img" onerror="this.parentElement.innerHTML='[Imagen]'"></a>${caption}`;
+    return `<span style="color:var(--text3);">🖼 ${escHtml(fname||'Imagen enviada')}</span>${caption}`;
   }
-  if (tipo === 'document' && url) {
-    return `<a href="${escHtml(url)}" target="_blank" rel="noopener" class="msg-doc-link"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>${escHtml(fname||'Documento')}</a>${caption}`;
+  if (tipo === 'document') {
+    if (url) return `<a href="${escHtml(url)}" target="_blank" rel="noopener" class="msg-doc-link">${docIcon}${escHtml(fname||'Documento')}</a>${caption}`;
+    return `<span class="msg-doc-link" style="cursor:default;">${docIcon}${escHtml(fname||'Documento enviado')}</span>${caption}`;
   }
-  if (tipo === 'audio' && url) {
-    return `<audio controls class="msg-audio"><source src="${escHtml(url)}">Audio no disponible</audio>`;
+  if (tipo === 'audio') {
+    if (url) return `<audio controls class="msg-audio"><source src="${escHtml(url)}">Audio no disponible</audio>`;
+    return `<span style="color:var(--text3);">🎵 ${escHtml(fname||'Audio enviado')}</span>`;
   }
-  if (tipo === 'video' && url) {
-    return `<a href="${escHtml(url)}" target="_blank" rel="noopener" class="msg-doc-link">🎥 ${escHtml(fname||'Video')}</a>${caption}`;
+  if (tipo === 'video') {
+    if (url) return `<a href="${escHtml(url)}" target="_blank" rel="noopener" class="msg-doc-link">🎥 ${escHtml(fname||'Video')}</a>${caption}`;
+    return `<span style="color:var(--text3);">🎥 ${escHtml(fname||'Video enviado')}</span>${caption}`;
   }
   if (tipo === 'sticker' && url) {
     return `<img src="${escHtml(url)}" style="max-width:100px;">`;
   }
-  // default text
   const text = msg.contenido || '';
   return `<span class="msg-text">${escHtml(text).replace(/\n/g,'<br>')}</span>`;
 }
@@ -640,7 +716,95 @@ scrollBottom();
 function handleEnter(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
-    document.getElementById('send-form').submit();
+    if (selectedFile) {
+      sendMedia();
+    } else {
+      document.getElementById('send-form').submit();
+    }
+  }
+}
+
+// ── Envío de archivos ────────────────────────────────────────────────
+let selectedFile = null;
+
+function handleFileSelect(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 16 * 1024 * 1024) {
+    alert('El archivo supera el límite de 16MB.');
+    input.value = '';
+    return;
+  }
+  selectedFile = file;
+  const bar = document.getElementById('media-preview-bar');
+  const content = document.getElementById('media-preview-content');
+  bar.classList.add('visible');
+  document.getElementById('send-text-btn').style.display = 'none';
+  document.getElementById('send-media-btn').style.display = 'flex';
+
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      content.innerHTML = `<img src="${e.target.result}" class="media-preview-thumb">`;
+    };
+    reader.readAsDataURL(file);
+  } else {
+    const icon = file.type.startsWith('audio/') ? '🎵' :
+                 file.type.startsWith('video/') ? '🎥' : '📄';
+    content.innerHTML = `<div class="media-preview-doc">${icon} <span style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(file.name)}</span></div>`;
+  }
+}
+
+function cancelMedia() {
+  selectedFile = null;
+  document.getElementById('attach-input').value = '';
+  document.getElementById('media-preview-bar').classList.remove('visible');
+  document.getElementById('media-preview-content').innerHTML = '';
+  document.getElementById('media-caption').value = '';
+  document.getElementById('send-text-btn').style.display = 'flex';
+  document.getElementById('send-media-btn').style.display = 'none';
+}
+
+async function sendMedia() {
+  if (!selectedFile) return;
+  const convPk = '{{ selected_conv.pk|default:"" }}';
+  if (!convPk) return;
+
+  const btn = document.getElementById('send-media-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span style="font-size:11px;">...</span>';
+
+  const caption = document.getElementById('media-caption').value.trim();
+  const formData = new FormData();
+  formData.append('archivo', selectedFile);
+  formData.append('caption', caption);
+  formData.append('csrfmiddlewaretoken', CSRF);
+
+  try {
+    const res = await fetch(`/whatsapp/conversacion/${convPk}/enviar-media/`, {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.ok) {
+      // Agregar mensaje al chat visualmente
+      const msgs = document.getElementById('messages-container');
+      if (msgs) {
+        const div = document.createElement('div');
+        div.className = 'msg-row out';
+        div.innerHTML = `<div class="msg-bubble">${renderContenido(data.mensaje)}</div><div class="msg-time">${escHtml(data.mensaje.timestamp)}</div>`;
+        msgs.appendChild(div);
+        msgs.scrollTop = msgs.scrollHeight;
+      }
+      cancelMedia();
+    } else {
+      alert(data.error || 'Error al enviar el archivo.');
+    }
+  } catch(e) {
+    alert('Error de conexión al enviar el archivo.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>';
   }
 }
 
