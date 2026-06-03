@@ -1,10 +1,12 @@
+import csv
+import io
 import json
 import logging
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Q
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -211,6 +213,70 @@ class DifusionEliminarView(LoginRequiredMixin, View):
         difusion.delete()
         messages.success(request, f'Difusión "{nombre}" eliminada.')
         return redirect('difusiones:list')
+
+
+# ──────────────────────────────────────────────
+class DifusionReportesView(LoginRequiredMixin, View):
+    def get(self, request):
+        estado_f = request.GET.get('estado', '')
+        q = request.GET.get('q', '').strip()
+
+        qs = Difusion.objects.all().order_by('-created_at')
+        if estado_f:
+            qs = qs.filter(estado=estado_f)
+        if q:
+            qs = qs.filter(nombre__icontains=q)
+
+        return render(request, 'difusiones/reportes.html', {
+            'difusiones': qs,
+            'estado_f': estado_f,
+            'q': q,
+        })
+
+
+# ──────────────────────────────────────────────
+class DifusionExportarView(LoginRequiredMixin, View):
+    def get(self, request, pk):
+        difusion = get_object_or_404(Difusion, pk=pk)
+        estado_f = request.GET.get('estado', '')
+
+        dest_qs = difusion.destinatarios.all().order_by('estado', 'nombre')
+        if estado_f:
+            dest_qs = dest_qs.filter(estado=estado_f)
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+
+        # Resumen
+        writer.writerow(['Difusión', difusion.nombre])
+        writer.writerow(['Estado', difusion.get_estado_display() if hasattr(difusion, 'get_estado_display') else difusion.estado])
+        writer.writerow(['Total destinatarios', difusion.total])
+        writer.writerow(['Enviados correctamente', difusion.enviados])
+        writer.writerow(['Fallidos', difusion.fallidos])
+        writer.writerow(['Pendientes', difusion.pendientes])
+        if difusion.enviado_at:
+            writer.writerow(['Fecha envío', difusion.enviado_at.strftime('%d/%m/%Y %H:%M')])
+        writer.writerow([])
+
+        # Encabezado detalle
+        writer.writerow(['Nombre', 'Teléfono', 'Estado', 'Fecha envío', 'Error'])
+
+        estado_labels = {'sent': 'Enviado', 'failed': 'Fallido', 'pending': 'Pendiente'}
+        for d in dest_qs:
+            writer.writerow([
+                d.nombre,
+                d.telefono,
+                estado_labels.get(d.estado, d.estado),
+                d.enviado_at.strftime('%d/%m/%Y %H:%M') if d.enviado_at else '',
+                d.error or '',
+            ])
+
+        filename = f"difusion_{difusion.pk}_{difusion.nombre[:30].replace(' ', '_')}.csv"
+        # BOM al inicio para que Excel abra correctamente con UTF-8
+        content = '﻿' + buf.getvalue()
+        response = HttpResponse(content, content_type='text/csv; charset=utf-8-sig')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
 
 
 # ──────────────────────────────────────────────

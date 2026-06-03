@@ -9,5 +9,7 @@ urlpatterns = [
     path('<int:pk>/', views.DifusionDetailView.as_view(), name='detail'),
     path('<int:pk>/enviar/', views.DifusionEnviarView.as_view(), name='enviar'),
     path('<int:pk>/eliminar/', views.DifusionEliminarView.as_view(), name='eliminar'),
+    path('<int:pk>/exportar/', views.DifusionExportarView.as_view(), name='exportar'),
+    path('reportes/', views.DifusionReportesView.as_view(), name='reportes'),
     path('api/preview/', views.PreviewContactosAPIView.as_view(), name='preview_api'),
 ]

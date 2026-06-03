@@ -1,4 +1,5 @@
 import logging
+import random
 import time
 
 from celery import shared_task
@@ -46,7 +47,7 @@ def send_difusion_task(self, difusion_id: int):
                 enviado_at=timezone.now(),
             )
             Difusion.objects.filter(pk=difusion_id).update(enviados=F('enviados') + 1)
-            time.sleep(0.3)
+            time.sleep(random.uniform(20, 40))
         except Exception as e:
             logger.error('Difusion %s: error sending to %s: %s', difusion_id, telefono, e)
             DifusionContacto.objects.filter(pk=dc_pk).update(
