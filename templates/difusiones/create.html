@@ -211,6 +211,22 @@
                         placeholder="Escribí el mensaje que recibirán los contactos..."
                         oninput="updateMsgPreview()">{{ post_data.mensaje|default:'' }}</textarea>
             </div>
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 14px; margin-top:4px;">
+              <div style="font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px;">Variables disponibles — click para insertar</div>
+              <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                {% for var in variables_disponibles %}
+                <button type="button"
+                        onclick="insertarVariable('{{ var.slug }}')"
+                        title="{{ var.etiqueta }}"
+                        style="font-size:11px; font-family:'DM Mono',monospace; background:var(--bg2); border:1px solid var(--border); border-radius:4px; padding:3px 8px; color:var(--green); cursor:pointer;">
+                  {{'{'}}{{ var.slug }}{{'}'}}
+                </button>
+                {% endfor %}
+              </div>
+              <div style="font-size:11px; color:var(--text3); margin-top:8px;">
+                Fijos: <code style="color:var(--text2);">{nombre}</code> <code style="color:var(--text2);">{telefono}</code> <code style="color:var(--text2);">{email}</code> <code style="color:var(--text2);">{grupo}</code>
+              </div>
+            </div>
           </div>
 
           <!-- Plantilla -->
@@ -477,6 +493,20 @@ function updateMsgPreview() {
   } else {
     box.innerHTML = '<span style="color:var(--text3); font-style:italic;">El mensaje aparecerá aquí...</span>';
   }
+}
+
+// ── Insertar variable en el cursor ───────────────────────────────────
+function insertarVariable(slug) {
+  const ta = document.getElementById('mensaje-input');
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const before = ta.value.substring(0, start);
+  const after = ta.value.substring(end);
+  const insert = '{' + slug + '}';
+  ta.value = before + insert + after;
+  ta.selectionStart = ta.selectionEnd = start + insert.length;
+  ta.focus();
+  updateMsgPreview();
 }
 
 // ── Init ──────────────────────────────────────────────────────────────

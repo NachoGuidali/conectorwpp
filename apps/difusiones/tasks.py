@@ -11,6 +11,30 @@ logger = logging.getLogger('apps.whatsapp')
 LOCK_TTL = 7200  # 2 horas máximo por difusión
 
 
+def _personalizar(mensaje: str, dc) -> str:
+    """Sustituye {variables} en el mensaje con datos del contacto."""
+    if '{' not in mensaje:
+        return mensaje
+    contacto = dc.contacto
+    if not contacto:
+        # Sin contacto vinculado, solo sustituir nombre/telefono del snapshot
+        return (mensaje
+                .replace('{nombre}', dc.nombre or '')
+                .replace('{telefono}', dc.telefono or ''))
+    vals = {
+        'nombre': contacto.nombre or '',
+        'telefono': contacto.telefono or '',
+        'email': contacto.email or '',
+        'grupo': contacto.grupo or '',
+    }
+    for campo, valor in contacto.valores.select_related('campo').values_list('campo__nombre', 'valor'):
+        vals[campo] = valor or ''
+    result = mensaje
+    for key, value in vals.items():
+        result = result.replace(f'{{{key}}}', value)
+    return result
+
+
 def _lock_key(difusion_id):
     return f'difusion_lock_{difusion_id}'
 
@@ -57,7 +81,8 @@ def send_difusion_task(self, difusion_id: int):
         pendientes = list(
             DifusionContacto.objects
             .filter(difusion_id=difusion_id, estado='pending')
-            .values_list('pk', 'telefono')
+            .select_related('contacto')
+            .prefetch_related('contacto__valores__campo')
         )
 
         logger.info('Difusion %s: %d pending recipients', difusion_id, len(pendientes))
@@ -67,24 +92,25 @@ def send_difusion_task(self, difusion_id: int):
             logger.info('Difusion %s: no pending recipients, marking completed', difusion_id)
             return
 
-        mensaje = difusion.get_mensaje_texto()
+        mensaje_base = difusion.get_mensaje_texto()
         first = True
 
-        for dc_pk, telefono in pendientes:
+        for dc in pendientes:
             if not first:
                 time.sleep(random.uniform(20, 40))
             first = False
             try:
-                result = send_text_message(telefono, mensaje)
-                DifusionContacto.objects.filter(pk=dc_pk).update(
+                mensaje = _personalizar(mensaje_base, dc)
+                result = send_text_message(dc.telefono, mensaje)
+                DifusionContacto.objects.filter(pk=dc.pk).update(
                     estado='sent',
                     whatsapp_message_id=result.get('id', ''),
                     enviado_at=timezone.now(),
                 )
                 Difusion.objects.filter(pk=difusion_id).update(enviados=F('enviados') + 1)
             except Exception as e:
-                logger.error('Difusion %s: error sending to %s: %s', difusion_id, telefono, e)
-                DifusionContacto.objects.filter(pk=dc_pk).update(
+                logger.error('Difusion %s: error sending to %s: %s', difusion_id, dc.telefono, e)
+                DifusionContacto.objects.filter(pk=dc.pk).update(
                     estado='failed',
                     error=str(e)[:500],
                 )

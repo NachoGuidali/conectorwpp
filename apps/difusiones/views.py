@@ -38,12 +38,20 @@ def _context_base():
         .distinct().exclude(grupo='').order_by('grupo')
     )
     plantillas = PlantillaHSM.objects.filter(activa=True).order_by('nombre')
+    variables_disponibles = list(
+        CampoPersonalizado.objects.filter(activo=True)
+        .order_by('orden', 'etiqueta')
+        .values('nombre', 'etiqueta')
+    )
+    for v in variables_disponibles:
+        v['slug'] = v['nombre']
     return {
         'campos_disponibles': campos,
         'grupos': grupos,
         'plantillas': plantillas,
         'fecha_opciones': FECHA_OPCIONES,
         'operadores_por_tipo': json.dumps(OPERADORES_POR_TIPO),
+        'variables_disponibles': variables_disponibles,
     }
 
 
