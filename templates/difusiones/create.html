@@ -119,6 +119,21 @@
   .add-filter-btn:hover { border-color: var(--green); color: var(--green); }
 
   .separator { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+  /* Lista de selección de contactos */
+  .contacto-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-bottom: 1px solid var(--border);
+    font-size: 12px; cursor: pointer; transition: background .1s;
+  }
+  .contacto-row:last-child { border-bottom: none; }
+  .contacto-row:hover { background: var(--bg3); }
+  .contacto-row.selected { background: #0a2215; }
+  .contacto-row input[type=checkbox] { flex-shrink: 0; cursor: pointer; }
+  .contacto-nombre { font-weight: 500; color: var(--text); flex: 1; }
+  .contacto-tel { color: var(--text3); font-family: 'DM Mono', monospace; font-size: 11px; }
+  .contacto-grupo { font-size: 10px; background: var(--bg4); color: var(--text3); padding: 1px 6px; border-radius: 3px; }
+  .more-msg { padding: 10px; text-align: center; font-size: 12px; color: var(--text3); background: var(--bg3); }
 </style>
 {% endblock %}
 
@@ -182,11 +197,37 @@
             </button>
           </div>
 
-          <!-- Preview count -->
+          <!-- Selección de contactos -->
+          <input type="hidden" name="contactos_ids" id="contactos-ids-input" value="">
+
           <div class="preview-box">
-            <div class="preview-count" id="preview-number">—</div>
-            <div class="preview-label">contactos coinciden con los filtros</div>
-            <div class="preview-sample" id="preview-sample"></div>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+              <div>
+                <span class="preview-count" id="preview-number">—</span>
+                <span class="preview-label" style="display:inline; margin-left:4px;">contactos</span>
+              </div>
+              <div id="sel-counter" style="font-size:12px; color:var(--green); font-weight:600; display:none;"></div>
+            </div>
+
+            <!-- Barra selección -->
+            <div id="sel-bar" style="display:none; margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; color:var(--text2);">
+                <input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this)">
+                <span id="select-all-label">Seleccionar todos</span>
+              </label>
+              <button type="button" onclick="limpiarSeleccion()"
+                style="font-size:11px; background:none; border:none; color:var(--text3); cursor:pointer; padding:0; text-decoration:underline;">
+                Limpiar selección
+              </button>
+            </div>
+
+            <!-- Lista de contactos -->
+            <div id="contactos-lista"
+                 style="max-height:280px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--radius-sm);">
+              <div style="padding:20px; text-align:center; color:var(--text3); font-size:13px;">
+                Aplicá los filtros para ver los contactos
+              </div>
+            </div>
           </div>
 
         </div><!-- /col-body -->
@@ -393,7 +434,11 @@ function removeCampoFiltro(idx) {
   schedulePreview();
 }
 
-// ── Preview AJAX ──────────────────────────────────────────────────────
+// ── Estado de selección ───────────────────────────────────────────────
+let todosContactos = [];     // lista completa del último fetch
+let seleccionados = new Set(); // PKs seleccionados
+
+// ── Preview + carga de lista ──────────────────────────────────────────
 let previewTimer;
 function schedulePreview() {
   clearTimeout(previewTimer);
@@ -416,7 +461,6 @@ async function fetchPreview() {
   });
 
   const el = document.getElementById('preview-number');
-  const sampleEl = document.getElementById('preview-sample');
   el.textContent = '…';
 
   try {
@@ -426,20 +470,100 @@ async function fetchPreview() {
       body: JSON.stringify({fecha_creacion: fecha, grupo, campos}),
     });
     const data = await res.json();
+    todosContactos = data.contactos || [];
+    // Al cambiar filtros, seleccionar todos automáticamente
+    seleccionados = new Set(todosContactos.map(c => c.pk));
     el.textContent = data.total;
-    if (data.muestra?.length) {
-      sampleEl.innerHTML = data.muestra.slice(0, 5).map(c =>
-        `<div class="preview-sample-item">
-          <span style="font-weight:500; color:var(--text);">${c.nombre}</span>
-          <span style="font-family:'DM Mono',monospace; font-size:11px; color:var(--text3);">${c.telefono}</span>
-        </div>`
-      ).join('') + (data.total > 5 ? `<div style="font-size:11px; color:var(--text3); margin-top:4px;">... y ${data.total - 5} más</div>` : '');
-    } else {
-      sampleEl.innerHTML = '';
+    if (data.total > 500) {
+      el.textContent = data.total;
     }
+    renderLista();
+    actualizarInputIds();
   } catch(e) {
     el.textContent = '—';
   }
+}
+
+function renderLista() {
+  const lista = document.getElementById('contactos-lista');
+  const selBar = document.getElementById('sel-bar');
+  const selCounter = document.getElementById('sel-counter');
+
+  if (todosContactos.length === 0) {
+    lista.innerHTML = '<div style="padding:20px; text-align:center; color:var(--text3); font-size:13px;">Sin contactos con estos filtros</div>';
+    selBar.style.display = 'none';
+    selCounter.style.display = 'none';
+    return;
+  }
+
+  selBar.style.display = 'flex';
+
+  const rows = todosContactos.map(c => {
+    const checked = seleccionados.has(c.pk) ? 'checked' : '';
+    const rowClass = seleccionados.has(c.pk) ? 'contacto-row selected' : 'contacto-row';
+    const grupo = c.grupo ? `<span class="contacto-grupo">${esc(c.grupo)}</span>` : '';
+    return `<label class="${rowClass}" id="crow_${c.pk}">
+      <input type="checkbox" ${checked} onchange="toggleContacto(${c.pk}, this.checked)">
+      <span class="contacto-nombre">${esc(c.nombre)}</span>
+      ${grupo}
+      <span class="contacto-tel">${esc(c.telefono)}</span>
+    </label>`;
+  }).join('');
+
+  const extra = todosContactos.length < parseInt(document.getElementById('preview-number').textContent || '0')
+    ? `<div class="more-msg">Mostrando los primeros 500 contactos</div>` : '';
+
+  lista.innerHTML = rows + extra;
+  actualizarContador();
+}
+
+function toggleContacto(pk, checked) {
+  if (checked) seleccionados.add(pk);
+  else seleccionados.delete(pk);
+  const row = document.getElementById(`crow_${pk}`);
+  if (row) row.className = checked ? 'contacto-row selected' : 'contacto-row';
+  actualizarContador();
+  actualizarInputIds();
+}
+
+function toggleSelectAll(cb) {
+  if (cb.checked) {
+    todosContactos.forEach(c => seleccionados.add(c.pk));
+  } else {
+    seleccionados.clear();
+  }
+  renderLista();
+  actualizarInputIds();
+}
+
+function limpiarSeleccion() {
+  seleccionados.clear();
+  renderLista();
+  actualizarInputIds();
+}
+
+function actualizarContador() {
+  const n = seleccionados.size;
+  const total = todosContactos.length;
+  const counter = document.getElementById('sel-counter');
+  const cb = document.getElementById('select-all-cb');
+  const label = document.getElementById('select-all-label');
+
+  counter.style.display = 'block';
+  counter.textContent = `${n} seleccionado${n !== 1 ? 's' : ''}`;
+
+  cb.checked = n === total && total > 0;
+  cb.indeterminate = n > 0 && n < total;
+  label.textContent = `Seleccionar todos (${total})`;
+}
+
+function actualizarInputIds() {
+  document.getElementById('contactos-ids-input').value =
+    seleccionados.size > 0 ? JSON.stringify([...seleccionados]) : '';
+}
+
+function esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // ── Message tabs ──────────────────────────────────────────────────────

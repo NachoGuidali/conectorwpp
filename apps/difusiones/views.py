@@ -117,8 +117,18 @@ class DifusionCreateView(LoginRequiredMixin, View):
         # Parse filtros
         filtros = parse_filtros_from_post(request.POST)
 
-        # Resolve matching contacts
-        contactos_qs = apply_filters(filtros)
+        # Contactos seleccionados explícitamente o todos los del filtro
+        ids_json = request.POST.get('contactos_ids', '').strip()
+        if ids_json:
+            try:
+                ids = [int(i) for i in json.loads(ids_json) if str(i).isdigit()]
+            except Exception:
+                ids = []
+            from apps.contacts.models import Contacto as ContactoModel
+            contactos_qs = ContactoModel.objects.filter(pk__in=ids)
+        else:
+            contactos_qs = apply_filters(filtros)
+
         contactos = list(contactos_qs.values('pk', 'telefono', 'nombre'))
 
         if not contactos:
@@ -324,7 +334,7 @@ class PreviewContactosAPIView(LoginRequiredMixin, View):
             data = request.POST.dict()
 
         filtros = parse_filtros_from_json(data)
-        qs = apply_filters(filtros)
+        qs = apply_filters(filtros).order_by('nombre')
         total = qs.count()
-        muestra = list(qs.values('nombre', 'telefono')[:8])
-        return JsonResponse({'total': total, 'muestra': muestra})
+        contactos = list(qs.values('pk', 'nombre', 'telefono', 'grupo')[:500])
+        return JsonResponse({'total': total, 'contactos': contactos})
