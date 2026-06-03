@@ -27,7 +27,8 @@ class UserCreateView(AdminRequiredMixin, View):
     template_name = 'users/form.html'
 
     def get(self, request):
-        return render(request, self.template_name, {'rol_choices': User.ROL_CHOICES, 'data': {}})
+        data = {'username': '', 'first_name': '', 'last_name': '', 'email': '', 'telefono': '', 'rol': ''}
+        return render(request, self.template_name, {'rol_choices': User.ROL_CHOICES, 'data': data})
 
     def post(self, request):
         username = request.POST.get('username', '').strip()
@@ -40,11 +41,11 @@ class UserCreateView(AdminRequiredMixin, View):
 
         if not username or not password:
             messages.error(request, 'Usuario y contraseña son requeridos.')
-            return render(request, self.template_name, {'rol_choices': User.ROL_CHOICES, 'data': request.POST})
+            return render(request, self.template_name, {'rol_choices': User.ROL_CHOICES, 'data': request.POST.dict()})
 
         if User.objects.filter(username=username).exists():
             messages.error(request, 'Ese nombre de usuario ya existe.')
-            return render(request, self.template_name, {'rol_choices': User.ROL_CHOICES, 'data': request.POST})
+            return render(request, self.template_name, {'rol_choices': User.ROL_CHOICES, 'data': request.POST.dict()})
 
         user = User.objects.create_user(
             username=username, email=email, password=password,
@@ -60,7 +61,14 @@ class UserUpdateView(AdminRequiredMixin, View):
 
     def get(self, request, pk):
         user = get_object_or_404(User, pk=pk)
-        return render(request, self.template_name, {'obj': user, 'rol_choices': User.ROL_CHOICES, 'data': {}})
+        data = {
+            'first_name': user.first_name or '',
+            'last_name': user.last_name or '',
+            'email': user.email or '',
+            'telefono': getattr(user, 'telefono', '') or '',
+            'rol': user.rol or '',
+        }
+        return render(request, self.template_name, {'obj': user, 'rol_choices': User.ROL_CHOICES, 'data': data})
 
     def post(self, request, pk):
         user = get_object_or_404(User, pk=pk)

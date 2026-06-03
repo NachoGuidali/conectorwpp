@@ -291,14 +291,14 @@ class PlantillaCreateView(LoginRequiredMixin, View):
     template_name = 'whatsapp/plantilla_form.html'
 
     def get(self, request):
-        return render(request, self.template_name, {'data': {}})
+        return render(request, self.template_name, {'data': {'nombre': '', 'cuerpo': ''}})
 
     def post(self, request):
         nombre = request.POST.get('nombre', '').strip()
         cuerpo = request.POST.get('cuerpo', '').strip()
         if not nombre or not cuerpo:
             messages.error(request, 'Nombre y cuerpo son requeridos.')
-            return render(request, self.template_name, {'data': request.POST})
+            return render(request, self.template_name, {'data': request.POST.dict()})
         vars_raw = request.POST.get('variables_raw', '').strip()
         variables = [v.strip() for v in vars_raw.splitlines() if v.strip()] if vars_raw else []
         PlantillaHSM.objects.create(nombre=nombre, cuerpo=cuerpo, variables=variables)
@@ -311,7 +311,8 @@ class PlantillaUpdateView(LoginRequiredMixin, View):
 
     def get(self, request, pk):
         p = get_object_or_404(PlantillaHSM, pk=pk)
-        return render(request, self.template_name, {'obj': p, 'data': {}})
+        data = {'nombre': p.nombre or '', 'cuerpo': p.cuerpo or ''}
+        return render(request, self.template_name, {'obj': p, 'data': data})
 
     def post(self, request, pk):
         p = get_object_or_404(PlantillaHSM, pk=pk)
