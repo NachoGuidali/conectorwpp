@@ -68,6 +68,7 @@ class ContactoListView(LoginRequiredMixin, View):
 
 class ContactoDetailView(LoginRequiredMixin, View):
     def get(self, request, pk):
+        from apps.whatsapp.models import Mensaje as MensajeModel
         contacto = get_object_or_404(Contacto, pk=pk)
         campos_con_valores = contacto.get_campos_con_valores()
         conversacion = None
@@ -75,10 +76,24 @@ class ContactoDetailView(LoginRequiredMixin, View):
             conversacion = contacto.conversaciones.order_by('-ultimo_mensaje_at').first()
         except Exception:
             pass
+        archivos = []
+        try:
+            conv_ids = list(contacto.conversaciones.values_list('pk', flat=True))
+            if conv_ids:
+                archivos = list(
+                    MensajeModel.objects.filter(
+                        conversacion_id__in=conv_ids,
+                        tipo__in=['image', 'document', 'audio', 'video']
+                    ).exclude(media_url='').order_by('-timestamp')[:50]
+                    .values('tipo', 'media_url', 'media_filename', 'media_mime', 'timestamp', 'direccion')
+                )
+        except Exception:
+            archivos = []
         return render(request, 'contacts/detail.html', {
             'contacto': contacto,
             'campos_con_valores': campos_con_valores,
             'conversacion': conversacion,
+            'archivos': archivos,
         })
 
 

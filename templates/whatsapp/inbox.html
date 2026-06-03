@@ -264,6 +264,13 @@
   }
   .modal-input:focus { border-color: var(--green); }
   .modal-label { font-size: 13px; font-weight: 500; color: var(--text2); margin-bottom: 6px; display: block; }
+
+  /* Media messages */
+  .msg-media-img { max-width: 220px; max-height: 220px; border-radius: 8px; display: block; cursor: pointer; }
+  .msg-doc-link { display: inline-flex; align-items: center; gap: 6px; color: var(--green); text-decoration: none; font-size: 13px; }
+  .msg-doc-link:hover { text-decoration: underline; }
+  .msg-audio { max-width: 250px; height: 36px; }
+  .msg-caption { font-size: 12px; color: var(--text2); margin-top: 4px; }
 </style>
 {% endblock %}
 
@@ -359,7 +366,27 @@
     <div class="messages-area" id="messages-area">
       {% for msg in mensajes %}
       <div class="msg {{ msg.direccion }}">
-        <div class="msg-bubble">{{ msg.contenido|linebreaksbr }}</div>
+        <div class="msg-bubble">
+          {% if msg.tipo == 'image' and msg.media_url %}
+            <a href="{{ msg.media_url }}" target="_blank" rel="noopener"><img src="{{ msg.media_url }}" class="msg-media-img" onerror="this.parentElement.innerHTML='[Imagen]'"></a>
+            {% if msg.contenido %}<div class="msg-caption">{{ msg.contenido|escape }}</div>{% endif %}
+          {% elif msg.tipo == 'document' and msg.media_url %}
+            <a href="{{ msg.media_url }}" target="_blank" rel="noopener" class="msg-doc-link">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              {{ msg.media_filename|default:"Documento"|escape }}
+            </a>
+            {% if msg.contenido %}<div class="msg-caption">{{ msg.contenido|escape }}</div>{% endif %}
+          {% elif msg.tipo == 'audio' and msg.media_url %}
+            <audio controls class="msg-audio"><source src="{{ msg.media_url }}">Audio no disponible</audio>
+          {% elif msg.tipo == 'video' and msg.media_url %}
+            <a href="{{ msg.media_url }}" target="_blank" rel="noopener" class="msg-doc-link">🎥 {{ msg.media_filename|default:"Video"|escape }}</a>
+            {% if msg.contenido %}<div class="msg-caption">{{ msg.contenido|escape }}</div>{% endif %}
+          {% elif msg.tipo == 'sticker' and msg.media_url %}
+            <img src="{{ msg.media_url }}" style="max-width:100px;">
+          {% else %}
+            <span class="msg-text">{{ msg.contenido|linebreaksbr }}</span>
+          {% endif %}
+        </div>
         <div class="msg-time">
           {{ msg.timestamp|date:"d/m H:i" }}
           {% if msg.enviado_por %} · {{ msg.enviado_por.get_full_name|default:msg.enviado_por.username }}{% endif %}
@@ -570,6 +597,38 @@ const CSRF = '{{ csrf_token }}';
 let lastMsgId = LAST_MSG_ID;
 let selectedPlantillaId = null;
 
+// XSS escape helper
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Render message content based on type
+function renderContenido(msg) {
+  const tipo = msg.tipo || 'text';
+  const url = msg.media_url || '';
+  const fname = msg.media_filename || '';
+  const caption = msg.contenido ? `<div class="msg-caption">${escHtml(msg.contenido)}</div>` : '';
+
+  if (tipo === 'image' && url) {
+    return `<a href="${escHtml(url)}" target="_blank" rel="noopener"><img src="${escHtml(url)}" class="msg-media-img" onerror="this.parentElement.innerHTML='[Imagen]'"></a>${caption}`;
+  }
+  if (tipo === 'document' && url) {
+    return `<a href="${escHtml(url)}" target="_blank" rel="noopener" class="msg-doc-link"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>${escHtml(fname||'Documento')}</a>${caption}`;
+  }
+  if (tipo === 'audio' && url) {
+    return `<audio controls class="msg-audio"><source src="${escHtml(url)}">Audio no disponible</audio>`;
+  }
+  if (tipo === 'video' && url) {
+    return `<a href="${escHtml(url)}" target="_blank" rel="noopener" class="msg-doc-link">🎥 ${escHtml(fname||'Video')}</a>${caption}`;
+  }
+  if (tipo === 'sticker' && url) {
+    return `<img src="${escHtml(url)}" style="max-width:100px;">`;
+  }
+  // default text
+  const text = msg.contenido || '';
+  return `<span class="msg-text">${escHtml(text).replace(/\n/g,'<br>')}</span>`;
+}
+
 // Auto-scroll
 function scrollBottom() {
   const area = document.getElementById('messages-area');
@@ -607,8 +666,8 @@ setInterval(async () => {
         const div = document.createElement('div');
         div.className = `msg ${msg.direccion}`;
         div.innerHTML = `
-          <div class="msg-bubble">${msg.contenido.replace(/\n/g,'<br>')}</div>
-          <div class="msg-time">${msg.timestamp}${msg.enviado_por ? ' · ' + msg.enviado_por : ''}</div>
+          <div class="msg-bubble">${renderContenido(msg)}</div>
+          <div class="msg-time">${escHtml(msg.timestamp)}${msg.enviado_por ? ' · ' + escHtml(msg.enviado_por) : ''}</div>
         `;
         area.appendChild(div);
       });
@@ -692,11 +751,11 @@ async function searchContacts(q) {
       const data = await res.json();
       if (!data.contactos.length) { results.style.display = 'none'; return; }
       results.innerHTML = data.contactos.map(c => `
-        <div onclick="selectContact(${c.id}, '${c.telefono.replace(/'/g,"\\'")}', '${c.nombre.replace(/'/g,"\\'")}' )"
+        <div onclick="selectContact(${c.id}, '${escHtml(c.telefono).replace(/'/g,"&#39;")}', '${escHtml(c.nombre).replace(/'/g,"&#39;")}' )"
              style="padding:9px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--border); display:flex; gap:10px;"
              onmouseenter="this.style.background='var(--bg3)'" onmouseleave="this.style.background=''">
-          <span style="font-weight:500; color:var(--text);">${c.nombre}</span>
-          <span style="color:var(--text3); font-family:'DM Mono',monospace; font-size:12px;">${c.telefono}</span>
+          <span style="font-weight:500; color:var(--text);">${escHtml(c.nombre)}</span>
+          <span style="color:var(--text3); font-family:'DM Mono',monospace; font-size:12px;">${escHtml(c.telefono)}</span>
         </div>`).join('');
       results.style.display = 'block';
     } catch(e) {}

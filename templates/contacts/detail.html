@@ -168,6 +168,35 @@
           </div>
           {% endif %}
         </div>
+
+        {% if archivos %}
+        <div class="card">
+          <div class="card-title">Archivos compartidos</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            {% for a in archivos %}
+              {% if a.tipo == 'image' %}
+                <a href="{{ a.media_url }}" target="_blank" title="{{ a.timestamp|date:'d/m/Y H:i' }}">
+                  <img src="{{ a.media_url }}" style="width:72px; height:72px; object-fit:cover; border-radius:6px; border:1px solid var(--border);">
+                </a>
+              {% elif a.tipo == 'document' %}
+                <a href="{{ a.media_url }}" target="_blank"
+                   style="display:flex; align-items:center; gap:6px; padding:8px 12px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--text2); text-decoration:none;">
+                  📄 {{ a.media_filename|default:"Documento" }}
+                </a>
+              {% elif a.tipo == 'audio' %}
+                <div style="background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:8px;">
+                  <audio controls style="height:32px; max-width:200px;"><source src="{{ a.media_url }}"></audio>
+                </div>
+              {% elif a.tipo == 'video' %}
+                <a href="{{ a.media_url }}" target="_blank"
+                   style="display:flex; align-items:center; gap:6px; padding:8px 12px; background:var(--bg2); border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--green); text-decoration:none;">
+                  🎥 {{ a.media_filename|default:"Video" }}
+                </a>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
       </div>
 
     </div>

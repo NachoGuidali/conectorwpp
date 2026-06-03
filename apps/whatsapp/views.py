@@ -196,6 +196,7 @@ class ConversacionMessagesAPIView(LoginRequiredMixin, View):
         return JsonResponse({'mensajes': [{
             'id': m.pk, 'direccion': m.direccion, 'tipo': m.tipo,
             'contenido': m.contenido, 'media_url': m.media_url,
+            'media_filename': m.media_filename, 'media_mime': m.media_mime,
             'status': m.status, 'timestamp': m.timestamp.strftime('%d/%m %H:%M'),
             'enviado_por': m.enviado_por.get_full_name() if m.enviado_por else '',
         } for m in nuevos]})

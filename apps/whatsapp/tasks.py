@@ -58,7 +58,10 @@ def process_incoming_message(self, message_data: dict):
             direccion=Mensaje.DIR_ENTRANTE,
             tipo=message_data.get('type', Mensaje.TIPO_TEXTO),
             contenido=message_data.get('content', ''),
+            media_url=message_data.get('media_url', ''),
             media_id=message_data.get('media_id', ''),
+            media_mime=message_data.get('media_mime', ''),
+            media_filename=message_data.get('media_filename', ''),
             status=Mensaje.STATUS_ENTREGADO,
             timestamp=message_data.get('timestamp', timezone.now()),
         )

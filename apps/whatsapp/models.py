@@ -109,6 +109,8 @@ class Mensaje(models.Model):
     contenido = models.TextField(blank=True)
     media_url = models.URLField(blank=True, max_length=1000)
     media_id = models.CharField(max_length=100, blank=True)
+    media_mime = models.CharField(max_length=100, blank=True)
+    media_filename = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDIENTE)
     enviado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     timestamp = models.DateTimeField()

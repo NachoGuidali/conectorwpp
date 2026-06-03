@@ -6,8 +6,8 @@ logger = logging.getLogger('apps.whatsapp')
 
 def verify_webhook_token(token: str, configured_token: str) -> bool:
     if not configured_token:
-        logger.warning('Webhook token not configured — accepting all requests')
-        return True
+        logger.warning('Webhook rejected — WHATSAPP_WEBHOOK_TOKEN not configured')
+        return False
     return token == configured_token
 
 
@@ -39,6 +39,7 @@ def parse_incoming_webhook(payload: dict) -> list:
         msg_type = data.get('messageType', 'text')
         content = _extract_content(msg, msg_type)
         media_id = _extract_media_id(msg, msg_type)
+        media_url, media_mime, media_filename = _extract_media_fields(msg, msg_type)
 
         messages_data.append({
             'from_phone': phone,
@@ -46,6 +47,9 @@ def parse_incoming_webhook(payload: dict) -> list:
             'type': _normalize_type(msg_type),
             'content': content,
             'media_id': media_id,
+            'media_url': media_url,
+            'media_mime': media_mime,
+            'media_filename': media_filename,
             'timestamp': timezone.now(),
             'contact_name': data.get('pushName', ''),
         })
@@ -74,6 +78,30 @@ def _extract_content(msg: dict, msg_type: str) -> str:
     if msg_type == 'listResponseMessage':
         return msg.get('listResponseMessage', {}).get('title', '')
     return f'[{msg_type}]'
+
+
+def _extract_media_fields(msg: dict, msg_type: str) -> tuple:
+    """Return (media_url, media_mime, media_filename) for media message types."""
+    type_map = {
+        'imageMessage': 'imageMessage',
+        'videoMessage': 'videoMessage',
+        'audioMessage': 'audioMessage',
+        'documentMessage': 'documentMessage',
+        'stickerMessage': 'stickerMessage',
+    }
+    key = type_map.get(msg_type)
+    if key and msg:
+        obj = msg.get(key, {})
+        url = obj.get('url', '')
+        mime = obj.get('mimetype', '')
+        if msg_type == 'documentMessage':
+            filename = obj.get('title', '') or obj.get('fileName', '')
+        elif msg_type == 'videoMessage':
+            filename = obj.get('title', '') or obj.get('fileName', '')
+        else:
+            filename = ''
+        return url, mime, filename
+    return '', '', ''
 
 
 def _extract_media_id(msg: dict, msg_type: str) -> str:
