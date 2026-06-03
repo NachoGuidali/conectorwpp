@@ -691,7 +691,8 @@ function renderContenido(msg) {
     return `<span class="msg-doc-link" style="cursor:default;">${docIcon}${escHtml(fname||'Documento enviado')}</span>${caption}`;
   }
   if (tipo === 'audio') {
-    if (url) return `<audio controls class="msg-audio"><source src="${escHtml(url)}">Audio no disponible</audio>`;
+    const mime = msg.media_mime ? msg.media_mime.split(';')[0].trim() : 'audio/ogg';
+    if (url) return `<audio controls class="msg-audio"><source src="${escHtml(url)}" type="${escHtml(mime)}">Audio no disponible</audio>`;
     return `<span style="color:var(--text3);">🎵 ${escHtml(fname||'Audio enviado')}</span>`;
   }
   if (tipo === 'video') {
