@@ -28,10 +28,14 @@ services:
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-changeme}
       - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
       - DEL_INSTANCE=false
-      - DATABASE_ENABLED=false
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER:-waply}:${POSTGRES_PASSWORD:-waply123}@db:5432/evolution
+      - DATABASE_CONNECTION_CLIENT_NAME=evolution
       - REDIS_ENABLED=true
       - REDIS_URI=redis://redis:6379/1
     depends_on:
+      - db
       - redis
     volumes:
       - evolution_instances:/evolution/instances

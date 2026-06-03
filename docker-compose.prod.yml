@@ -15,8 +15,3 @@ services:
     environment:
       - SERVER_URL=https://ras.supregsolutions.com
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
-      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
-      - DEL_INSTANCE=false
-      - DATABASE_ENABLED=false
-      - REDIS_ENABLED=true
-      - REDIS_URI=redis://redis:6379/1
