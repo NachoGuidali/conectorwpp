@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
 
   evolution-api:
-    image: atendai/evolution-api:latest
+    image: evoapicloud/evolution-api:latest
     restart: unless-stopped
     environment:
       - SERVER_URL=${PUBLIC_URL:-http://localhost:8080}
@@ -31,8 +31,9 @@ services:
       - DATABASE_ENABLED=true
       - DATABASE_PROVIDER=postgresql
       - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER:-waply}:${POSTGRES_PASSWORD:-waply123}@db:5432/evolution
-      - DATABASE_CONNECTION_CLIENT_NAME=evolution
-      - CACHE_REDIS_ENABLED=false
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis:6379/2
+      - CACHE_REDIS_PREFIX_KEY=evolution
     depends_on:
       - db
       - redis

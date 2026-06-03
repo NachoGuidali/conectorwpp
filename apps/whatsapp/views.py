@@ -392,10 +392,10 @@ class QRCodeView(SupervisorRequiredMixin, View):
             if state == 'open':
                 cache.delete('whatsapp_qr_code')
                 return JsonResponse({'connected': True, 'qr_base64': None})
-            # Trigger connection (once — QR arrives via webhook)
-            trigger_connect()
-            # Serve QR from cache if webhook already delivered it
+            # Only trigger connect if no QR in cache yet
             qr = cache.get('whatsapp_qr_code')
+            if not qr:
+                trigger_connect()
             return JsonResponse({'connected': False, 'qr_base64': qr})
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
