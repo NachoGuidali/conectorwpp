@@ -27,7 +27,7 @@ class UserCreateView(AdminRequiredMixin, View):
     template_name = 'users/form.html'
 
     def get(self, request):
-        return render(request, self.template_name, {'rol_choices': User.ROL_CHOICES})
+        return render(request, self.template_name, {'rol_choices': User.ROL_CHOICES, 'data': {}})
 
     def post(self, request):
         username = request.POST.get('username', '').strip()

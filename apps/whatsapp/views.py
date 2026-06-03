@@ -291,7 +291,7 @@ class PlantillaCreateView(LoginRequiredMixin, View):
     template_name = 'whatsapp/plantilla_form.html'
 
     def get(self, request):
-        return render(request, self.template_name)
+        return render(request, self.template_name, {'data': {}})
 
     def post(self, request):
         nombre = request.POST.get('nombre', '').strip()

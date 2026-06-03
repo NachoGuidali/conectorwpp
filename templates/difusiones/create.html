@@ -262,9 +262,12 @@
 
 {% block extra_js %}
 <script>
-// ── Campos config from server ──────────────────────────────────────────
+// ── Valores desde Django (fuera del bloque verbatim) ──────────────────
 const CAMPOS = {{ campos_disponibles|safe }};
 const OPERADORES = {{ operadores_por_tipo|safe }};
+const PREVIEW_URL = "{% url 'difusiones:preview_api' %}";
+const CSRF_TOKEN = "{{ csrf_token }}";
+{% verbatim %}
 let campoRowCount = 0;
 
 // ── Operadores que NO necesitan valor ─────────────────────────────────
@@ -401,9 +404,9 @@ async function fetchPreview() {
   el.textContent = '…';
 
   try {
-    const res = await fetch('{% url "difusiones:preview_api" %}', {
+    const res = await fetch(PREVIEW_URL, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN},
       body: JSON.stringify({fecha_creacion: fecha, grupo, campos}),
     });
     const data = await res.json();
@@ -485,5 +488,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('.date-pill[data-val=""]')?.classList.add('active');
   }
 });
+{% endverbatim %}
 </script>
 {% endblock %}

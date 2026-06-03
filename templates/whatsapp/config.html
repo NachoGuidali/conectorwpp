@@ -166,7 +166,8 @@ async function refreshQR() {
     if (data.connected) {
       container.innerHTML = '<div class="qr-placeholder"><p style="color:var(--green);">✓ WhatsApp conectado</p></div>';
     } else if (data.qr_base64) {
-      container.innerHTML = `<img src="data:image/png;base64,${data.qr_base64}" alt="QR">`;
+      const src = data.qr_base64.startsWith('data:') ? data.qr_base64 : `data:image/png;base64,${data.qr_base64}`;
+      container.innerHTML = `<img src="${src}" alt="QR">`;
     } else {
       container.innerHTML = '<div class="qr-placeholder"><p>No se pudo obtener el QR. Verificá la configuración.</p></div>';
     }

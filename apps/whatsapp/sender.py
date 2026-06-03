@@ -127,8 +127,11 @@ def get_qr_code(force: bool = False) -> str | None:
         r = requests.get(url, headers=_evo_headers(), timeout=15)
         r.raise_for_status()
         data = r.json()
-        return (data.get('base64') or data.get('qrcode', {}).get('base64') or
-                data.get('code') or data.get('qr') or None)
+        qr = (data.get('base64') or data.get('qrcode', {}).get('base64') or
+              data.get('qr') or None)
+        if qr and ',' in qr:
+            qr = qr.split(',', 1)[1]
+        return qr
     except Exception as e:
         logger.error('Error getting QR code: %s', e)
         return None
