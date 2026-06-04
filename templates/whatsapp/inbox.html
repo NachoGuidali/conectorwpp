@@ -832,16 +832,24 @@ if (textarea) {
 
 // ── SSE — Real-time updates ────────────────────────────────────────────
 {% if selected_conv %}
-const SSE_URL = `/whatsapp/api/inbox/sse/?conv_pk={{ selected_conv.pk }}&last_msg_id=${lastMsgId}`;
+const SSE_CONV_PK = '{{ selected_conv.pk }}';
 {% else %}
-const SSE_URL = `/whatsapp/api/inbox/sse/`;
+const SSE_CONV_PK = '';
 {% endif %}
 
 let sseSource = null;
+let sseConvHash = '';
+
+function sseUrl() {
+  const base = SSE_CONV_PK
+    ? `/whatsapp/api/inbox/sse/?conv_pk=${SSE_CONV_PK}&last_msg_id=${lastMsgId}`
+    : `/whatsapp/api/inbox/sse/`;
+  return sseConvHash ? `${base}&last_conv_ts=${encodeURIComponent(sseConvHash)}` : base;
+}
 
 function connectSSE() {
   if (sseSource) sseSource.close();
-  sseSource = new EventSource(SSE_URL);
+  sseSource = new EventSource(sseUrl());
 
   // Nuevos mensajes en la conversación activa
   sseSource.addEventListener('message', e => {
@@ -869,19 +877,15 @@ function connectSSE() {
   // Lista de conversaciones actualizada
   sseSource.addEventListener('conv_list', e => {
     try {
-      const convs = JSON.parse(e.data);
-      updateConvList(convs);
+      const payload = JSON.parse(e.data);
+      sseConvHash = payload.hash || '';
+      updateConvList(payload.convs || payload);
     } catch(e) {}
   });
 
-  // El servidor cerró la conexión limpiamente — reconectar
-  sseSource.addEventListener('reconnect', () => {
-    sseSource.close();
-    setTimeout(connectSSE, 500);
-  });
-
+  // EventSource reconecta automáticamente con retry: 1500 del servidor
+  // Si hay error, forzar reconexión con URL actualizada
   sseSource.onerror = () => {
-    // EventSource reconecta automáticamente, pero lo forzamos
     sseSource.close();
     setTimeout(connectSSE, 2000);
   };

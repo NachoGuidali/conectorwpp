@@ -214,101 +214,75 @@ class InboxUpdatesAPIView(LoginRequiredMixin, View):
 
 class InboxSSEView(LoginRequiredMixin, View):
     """
-    Server-Sent Events endpoint. Streams:
-      - 'message'   → nuevo mensaje en la conversación activa
-      - 'conv_list' → conversaciones actualizadas (sidebar)
-      - 'heartbeat' → keep-alive cada 15s
-    Cierra la conexión a los 55s; el browser reconecta automáticamente.
+    Fast-polling SSE: responde en <100ms con los eventos disponibles y cierra.
+    El browser reconecta cada 1.5s via EventSource retry.
+    Cada worker solo está ocupado <100ms por request, nunca bloqueado.
     """
-    SSE_TIMEOUT = 55   # segundos antes de cerrar y reconectar
-    POLL_INTERVAL = 1  # segundos entre polls
 
     def get(self, request):
-        import time as _time
-
         conv_pk = request.GET.get('conv_pk') or None
-        # Last-Event-ID viene del browser en reconexión automática
         last_msg_id = int(request.headers.get('Last-Event-ID') or
                           request.GET.get('last_msg_id') or 0)
+        last_conv_ts = request.GET.get('last_conv_ts') or '0'
 
-        def event_stream():
-            nonlocal last_msg_id
-            start = _time.monotonic()
-            last_conv_check = 0
-            last_conv_hash = None
+        events = []
 
-            while _time.monotonic() - start < self.SSE_TIMEOUT:
-                now = _time.monotonic()
-                yielded = False
+        # ── Nuevos mensajes en la conversación activa ──────────────────
+        if conv_pk:
+            try:
+                nuevos = list(
+                    Mensaje.objects.filter(
+                        conversacion_id=conv_pk,
+                        pk__gt=last_msg_id,
+                    ).order_by('pk').select_related('enviado_por')[:20]
+                )
+                for m in nuevos:
+                    last_msg_id = m.pk
+                    data = json.dumps({
+                        'id': m.pk, 'tipo': m.tipo,
+                        'contenido': m.contenido,
+                        'direccion': m.direccion,
+                        'media_url': m.media_url,
+                        'media_filename': m.media_filename,
+                        'media_mime': m.media_mime,
+                        'timestamp': m.timestamp.strftime('%H:%M'),
+                        'enviado_por': m.enviado_por.get_full_name() if m.enviado_por else '',
+                    })
+                    events.append(f'id: {m.pk}\nevent: message\ndata: {data}\n\n')
+            except Exception:
+                pass
 
-                # ── Nuevos mensajes en la conversación activa ──────────
-                if conv_pk:
-                    try:
-                        nuevos = list(
-                            Mensaje.objects.filter(
-                                conversacion_id=conv_pk,
-                                pk__gt=last_msg_id,
-                            ).order_by('pk')
-                            .select_related('enviado_por')[:20]
-                        )
-                        for m in nuevos:
-                            last_msg_id = m.pk
-                            data = json.dumps({
-                                'id': m.pk, 'tipo': m.tipo,
-                                'contenido': m.contenido,
-                                'direccion': m.direccion,
-                                'media_url': m.media_url,
-                                'media_filename': m.media_filename,
-                                'media_mime': m.media_mime,
-                                'timestamp': m.timestamp.strftime('%H:%M'),
-                                'enviado_por': m.enviado_por.get_full_name() if m.enviado_por else '',
-                            })
-                            yield f'id: {m.pk}\nevent: message\ndata: {data}\n\n'
-                            yielded = True
-                    except Exception:
-                        pass
+        # ── Lista de conversaciones ────────────────────────────────────
+        try:
+            convs = list(
+                _get_convs_qs(request.user)
+                .order_by('-ultimo_mensaje_at')[:30]
+                .values('pk', 'nombre_contacto', 'telefono',
+                        'mensajes_no_leidos', 'ultimo_mensaje_at',
+                        'archivada', 'estado')
+            )
+            conv_hash = str(hash(str([
+                (c['pk'], c['mensajes_no_leidos'], str(c['ultimo_mensaje_at']), c['estado'])
+                for c in convs
+            ])))
+            if conv_hash != last_conv_ts:
+                for c in convs:
+                    c['ultimo_mensaje_at'] = (
+                        c['ultimo_mensaje_at'].strftime('%d/%m %H:%M')
+                        if c['ultimo_mensaje_at'] else ''
+                    )
+                events.append(f'event: conv_list\ndata: {json.dumps({"convs": convs, "hash": conv_hash})}\n\n')
+        except Exception:
+            conv_hash = last_conv_ts
 
-                # ── Lista de conversaciones (cada 2s) ──────────────────
-                if now - last_conv_check >= 2:
-                    last_conv_check = now
-                    try:
-                        convs = list(
-                            _get_convs_qs(request.user)
-                            .order_by('-ultimo_mensaje_at')[:30]
-                            .values('pk', 'nombre_contacto', 'telefono',
-                                    'mensajes_no_leidos', 'ultimo_mensaje_at',
-                                    'archivada', 'estado')
-                        )
-                        conv_hash = hash(str([(c['pk'], c['mensajes_no_leidos'],
-                                               str(c['ultimo_mensaje_at'])) for c in convs]))
-                        if conv_hash != last_conv_hash:
-                            last_conv_hash = conv_hash
-                            for c in convs:
-                                c['ultimo_mensaje_at'] = (
-                                    c['ultimo_mensaje_at'].strftime('%d/%m %H:%M')
-                                    if c['ultimo_mensaje_at'] else ''
-                                )
-                            yield f'event: conv_list\ndata: {json.dumps(convs)}\n\n'
-                            yielded = True
-                    except Exception:
-                        pass
+        # retry: 1500 → browser reconecta cada 1.5s
+        body = 'retry: 1500\n\n' + ''.join(events)
+        if not events:
+            body += ': poll\n\n'
 
-                # ── Heartbeat cada ~15s ────────────────────────────────
-                elapsed = int(_time.monotonic() - start)
-                if elapsed % 15 == 0 and not yielded:
-                    yield f': heartbeat {elapsed}s\n\n'
-
-                _time.sleep(self.POLL_INTERVAL)
-
-            # Cierre limpio — el browser reconecta con Last-Event-ID
-            yield 'event: reconnect\ndata: {}\n\n'
-
-        response = HttpResponse(
-            event_stream(),
-            content_type='text/event-stream; charset=utf-8',
-        )
+        response = HttpResponse(body, content_type='text/event-stream; charset=utf-8')
         response['Cache-Control'] = 'no-cache'
-        response['X-Accel-Buffering'] = 'no'  # Nginx: desactivar buffering
+        response['X-Accel-Buffering'] = 'no'
         return response
 
 
