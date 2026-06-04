@@ -165,11 +165,15 @@
   {% endif %}
 
   <div class="sidebar-bottom">
-    <a href="{% url 'logout' %}" class="sidebar-item" title="Salir">
-      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-      </svg>
-    </a>
+    <form method="post" action="{% url 'logout' %}" style="margin:0;">
+      {% csrf_token %}
+      <button type="submit" class="sidebar-item" title="Salir"
+              style="background:none; border:none; cursor:pointer; width:100%; padding:0;">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+        </svg>
+      </button>
+    </form>
     <div class="avatar-sm" style="margin: 8px 16px 0;" title="{{ user.get_full_name|default:user.username }}">
       {{ user.get_full_name|default:user.username|slice:":1"|upper }}
     </div>

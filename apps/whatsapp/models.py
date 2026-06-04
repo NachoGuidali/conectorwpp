@@ -37,6 +37,17 @@ class ConfiguracionWhatsApp(models.Model):
 
 
 class Conversacion(models.Model):
+    ESTADO_BOT = 'bot'
+    ESTADO_PENDIENTE = 'pendiente'
+    ESTADO_ABIERTA = 'abierta'
+    ESTADO_CERRADA = 'cerrada'
+    ESTADO_CHOICES = [
+        (ESTADO_BOT, 'Bot activo'),
+        (ESTADO_PENDIENTE, 'Pendiente de agente'),
+        (ESTADO_ABIERTA, 'Abierta'),
+        (ESTADO_CERRADA, 'Cerrada'),
+    ]
+
     telefono = models.CharField(max_length=20, unique=True, db_index=True)
     nombre_contacto = models.CharField(max_length=200, blank=True)
     contacto = models.ForeignKey(
@@ -50,6 +61,10 @@ class Conversacion(models.Model):
         null=True, blank=True,
         on_delete=models.SET_NULL,
         related_name='conversaciones',
+    )
+    estado = models.CharField(
+        max_length=20, choices=ESTADO_CHOICES,
+        default=ESTADO_ABIERTA, db_index=True,
     )
     ultimo_mensaje_at = models.DateTimeField(null=True, blank=True)
     mensajes_no_leidos = models.PositiveIntegerField(default=0)

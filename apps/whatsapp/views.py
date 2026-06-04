@@ -277,7 +277,7 @@ class InboxSSEView(LoginRequiredMixin, View):
                             .order_by('-ultimo_mensaje_at')[:30]
                             .values('pk', 'nombre_contacto', 'telefono',
                                     'mensajes_no_leidos', 'ultimo_mensaje_at',
-                                    'archivada')
+                                    'archivada', 'estado')
                         )
                         conv_hash = hash(str([(c['pk'], c['mensajes_no_leidos'],
                                                str(c['ultimo_mensaje_at'])) for c in convs]))
@@ -386,6 +386,15 @@ class ArchivarConversacionView(LoginRequiredMixin, View):
 class MarcarLeidoView(LoginRequiredMixin, View):
     def post(self, request, pk):
         Conversacion.objects.filter(pk=pk).update(mensajes_no_leidos=0)
+        return JsonResponse({'ok': True})
+
+
+class AbrirConversacionView(LoginRequiredMixin, View):
+    """Cuando el agente abre una conv pendiente, la pasa a 'abierta'."""
+    def post(self, request, pk):
+        Conversacion.objects.filter(pk=pk, estado=Conversacion.ESTADO_PENDIENTE).update(
+            estado=Conversacion.ESTADO_ABIERTA
+        )
         return JsonResponse({'ok': True})
 
 
@@ -672,3 +681,43 @@ class APIEnviarMensajeView(View):
             return JsonResponse({'ok': True, 'message_id': result.get('id', ''), 'conversacion_id': conv.pk})
         except Exception as e:
             return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class APIHandoffView(View):
+    """
+    n8n llama a este endpoint cuando el bot termina y quiere pasar la conv a un agente.
+    Body JSON: {"conversation_id": 123}  o  {"phone": "+549..."}
+    Header: X-Api-Key: <CRM_API_KEY>
+    """
+    def post(self, request):
+        from django.conf import settings as dj
+        api_key = getattr(dj, 'CRM_API_KEY', '')
+        if not api_key or request.headers.get('X-Api-Key', '') != api_key:
+            return JsonResponse({'ok': False, 'error': 'Unauthorized'}, status=401)
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+        conv = None
+        conv_id = data.get('conversation_id')
+        phone = data.get('phone', '').strip()
+
+        if conv_id:
+            conv = Conversacion.objects.filter(pk=conv_id).first()
+        elif phone:
+            if not phone.startswith('+'):
+                phone = '+' + phone
+            conv = Conversacion.objects.filter(telefono=phone).first()
+
+        if not conv:
+            return JsonResponse({'ok': False, 'error': 'Conversación no encontrada'}, status=404)
+
+        # Marcar como pendiente de agente y desactivar bot
+        Conversacion.objects.filter(pk=conv.pk).update(
+            estado=Conversacion.ESTADO_PENDIENTE,
+            bot_n8n_activo=False,
+        )
+        logger.info('Handoff bot→agente para conv %s', conv.pk)
+        return JsonResponse({'ok': True, 'conversation_id': conv.pk, 'estado': 'pendiente'})

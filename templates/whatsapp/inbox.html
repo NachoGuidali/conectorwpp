@@ -74,6 +74,14 @@
   .conv-preview { font-size: 12px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
   .conv-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
   .conv-time { font-size: 11px; color: var(--text3); }
+  .pending-badge {
+    background: #1d4ed8; color: #fff;
+    font-size: 9px; font-weight: 700; letter-spacing: .04em;
+    padding: 2px 5px; border-radius: 4px; flex-shrink: 0;
+    animation: pulse-blue 1.5s infinite;
+  }
+  @keyframes pulse-blue { 0%,100%{opacity:1} 50%{opacity:.6} }
+
   .unread-dot {
     width: 18px; height: 18px;
     background: var(--green); color: #000;
@@ -371,6 +379,9 @@
         <div class="conv-meta">
           {% if conv.ultimo_mensaje_at %}
           <span class="conv-time">{{ conv.ultimo_mensaje_at|date:"d/m H:i" }}</span>
+          {% endif %}
+          {% if conv.estado == 'pendiente' %}
+          <span class="pending-badge" data-conv-id="{{ conv.pk }}" title="Listo para agente">LISTO</span>
           {% endif %}
           <span class="unread-dot" data-conv-id="{{ conv.pk }}"
                 style="{% if conv.mensajes_no_leidos == 0 %}display:none;{% endif %}">
@@ -877,21 +888,41 @@ function connectSSE() {
 }
 
 function updateConvList(convs) {
-  // Actualizar dots de no leídos
   convs.forEach(conv => {
+    // Badge de no leídos
     const dot = document.querySelector(`.unread-dot[data-conv-id="${conv.pk}"]`);
     if (dot) {
       const n = conv.mensajes_no_leidos || 0;
       dot.textContent = n;
       dot.style.display = n > 0 ? 'flex' : 'none';
+    }
 
-      // Mover la conversación al tope de la lista si tiene mensajes nuevos
-      if (n > 0) {
-        const convItem = dot.closest('a');
-        const list = convItem && convItem.parentElement;
-        if (list && convItem !== list.firstElementChild) {
-          list.insertBefore(convItem, list.firstElementChild);
+    // Badge LISTO (pendiente de agente)
+    const meta = dot && dot.closest('.conv-meta');
+    if (meta) {
+      let pendBadge = meta.querySelector(`.pending-badge[data-conv-id="${conv.pk}"]`);
+      if (conv.estado === 'pendiente') {
+        if (!pendBadge) {
+          pendBadge = document.createElement('span');
+          pendBadge.className = 'pending-badge';
+          pendBadge.setAttribute('data-conv-id', conv.pk);
+          pendBadge.textContent = 'LISTO';
+          pendBadge.title = 'Listo para agente';
+          meta.insertBefore(pendBadge, meta.firstChild);
+          // Notificación sonora/visual al aparecer
+          notificarPendiente(conv);
         }
+      } else if (pendBadge) {
+        pendBadge.remove();
+      }
+    }
+
+    // Mover al tope si tiene actividad nueva
+    const convItem = dot && dot.closest('a');
+    const list = convItem && convItem.parentElement;
+    if (list && (conv.mensajes_no_leidos > 0 || conv.estado === 'pendiente')) {
+      if (convItem !== list.firstElementChild) {
+        list.insertBefore(convItem, list.firstElementChild);
       }
     }
   });
@@ -920,6 +951,41 @@ async function markConvRead(convPk) {
     });
   } catch(e) {}
 }
+
+function notificarPendiente(conv) {
+  // Flash visual en el título del tab
+  const nombre = conv.nombre_contacto || conv.telefono || 'Contacto';
+  const original = document.title;
+  let toggle = false;
+  const iv = setInterval(() => {
+    document.title = toggle ? `🔵 LISTO — ${nombre}` : original;
+    toggle = !toggle;
+  }, 800);
+  setTimeout(() => { clearInterval(iv); document.title = original; }, 8000);
+
+  // Sonido (beep suave via Web Audio API)
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(); osc.stop(ctx.currentTime + 0.4);
+  } catch(e) {}
+}
+
+// Cuando el agente abre una conversación pendiente, marcarla como abierta
+{% if selected_conv and selected_conv.estado == 'pendiente' %}
+(async () => {
+  try {
+    await fetch('/whatsapp/api/conversacion/{{ selected_conv.pk }}/abrir/', {
+      method: 'POST', headers: {'X-CSRFToken': CSRF},
+    });
+  } catch(e) {}
+})();
+{% endif %}
 
 // Iniciar SSE
 connectSSE();

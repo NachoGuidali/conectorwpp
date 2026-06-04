@@ -12,6 +12,7 @@ urlpatterns = [
     path('api/inbox/updates/', views.InboxUpdatesAPIView.as_view(), name='inbox_updates'),
     path('api/inbox/sse/', views.InboxSSEView.as_view(), name='inbox_sse'),
     path('api/mensajes/<int:pk>/marcar-leido/', views.MarcarLeidoView.as_view(), name='marcar_leido'),
+    path('api/conversacion/<int:pk>/abrir/', views.AbrirConversacionView.as_view(), name='abrir_conversacion'),
     path('api/mensajes/<int:pk>/', views.ConversacionMessagesAPIView.as_view(), name='mensajes_api'),
 
     # Conversación
@@ -35,4 +36,5 @@ urlpatterns = [
 
     # API externa (para n8n)
     path('api/enviar/', views.APIEnviarMensajeView.as_view(), name='api_enviar'),
+    path('api/handoff/', views.APIHandoffView.as_view(), name='api_handoff'),
 ]
