@@ -331,9 +331,9 @@
       <div class="conv-header-top">
         <span class="conv-title">
           Conversaciones
-          {% if unread_total > 0 %}
-          <span style="font-size:12px; color:var(--green); font-weight:600;">({{ unread_total }})</span>
-          {% endif %}
+          <span class="unread-header-count" style="font-size:12px; color:var(--green); font-weight:600;">
+            {% if unread_total > 0 %}({{ unread_total }}){% endif %}
+          </span>
         </span>
         <button class="btn-new" onclick="openNewConvModal()" title="Nueva conversación">+</button>
       </div>
@@ -372,9 +372,10 @@
           {% if conv.ultimo_mensaje_at %}
           <span class="conv-time">{{ conv.ultimo_mensaje_at|date:"d/m H:i" }}</span>
           {% endif %}
-          {% if conv.mensajes_no_leidos > 0 %}
-          <span class="unread-dot" data-conv-id="{{ conv.pk }}">{{ conv.mensajes_no_leidos }}</span>
-          {% endif %}
+          <span class="unread-dot" data-conv-id="{{ conv.pk }}"
+                style="{% if conv.mensajes_no_leidos == 0 %}display:none;{% endif %}">
+            {{ conv.mensajes_no_leidos }}
+          </span>
           {% if not conv.agente %}<span class="conv-no-agent" title="Sin agente asignado"></span>{% endif %}
         </div>
       </a>
@@ -413,7 +414,7 @@
 
     <div class="messages-area" id="messages-area">
       {% for msg in mensajes %}
-      <div class="msg {{ msg.direccion }}">
+      <div class="msg {{ msg.direccion }}" data-msg-id="{{ msg.pk }}">
         <div class="msg-bubble">
           {% if msg.tipo == 'image' and msg.media_url %}
             <a href="{{ msg.media_url }}" target="_blank" rel="noopener"><img src="{{ msg.media_url }}" class="msg-media-img" onerror="this.parentElement.innerHTML='[Imagen]'"></a>
@@ -818,43 +819,119 @@ if (textarea) {
   });
 }
 
-// Polling nuevos mensajes
+// ── SSE — Real-time updates ────────────────────────────────────────────
 {% if selected_conv %}
-setInterval(async () => {
-  try {
-    const res = await fetch(`/whatsapp/api/mensajes/{{ selected_conv.pk }}/?since_id=${lastMsgId}`);
-    const data = await res.json();
-    if (data.mensajes.length > 0) {
-      const area = document.getElementById('messages-area');
-      data.mensajes.forEach(msg => {
-        lastMsgId = msg.id;
-        const div = document.createElement('div');
-        div.className = `msg ${msg.direccion}`;
-        div.innerHTML = `
-          <div class="msg-bubble">${renderContenido(msg)}</div>
-          <div class="msg-time">${escHtml(msg.timestamp)}${msg.enviado_por ? ' · ' + escHtml(msg.enviado_por) : ''}</div>
-        `;
-        area.appendChild(div);
-      });
-      scrollBottom();
-    }
-  } catch(e) {}
-}, 3000);
+const SSE_URL = `/whatsapp/api/inbox/sse/?conv_pk={{ selected_conv.pk }}&last_msg_id=${lastMsgId}`;
+{% else %}
+const SSE_URL = `/whatsapp/api/inbox/sse/`;
+{% endif %}
 
-// Polling unread badge
-setInterval(async () => {
+let sseSource = null;
+
+function connectSSE() {
+  if (sseSource) sseSource.close();
+  sseSource = new EventSource(SSE_URL);
+
+  // Nuevos mensajes en la conversación activa
+  sseSource.addEventListener('message', e => {
+    try {
+      const msg = JSON.parse(e.data);
+      // Ignorar si ya existe en el DOM
+      if (document.querySelector(`[data-msg-id="${msg.id}"]`)) return;
+      lastMsgId = msg.id;
+      const area = document.getElementById('messages-area');
+      if (!area) return;
+      const div = document.createElement('div');
+      div.className = `msg ${msg.direccion}`;
+      div.setAttribute('data-msg-id', msg.id);
+      div.innerHTML = `
+        <div class="msg-bubble">${renderContenido(msg)}</div>
+        <div class="msg-time">${escHtml(msg.timestamp)}${msg.enviado_por ? ' · ' + escHtml(msg.enviado_por) : ''}</div>
+      `;
+      area.appendChild(div);
+      scrollBottom();
+      // Marcar conversación como leída si está abierta
+      markConvRead({{ selected_conv.pk|default:'null' }});
+    } catch(e) {}
+  });
+
+  // Lista de conversaciones actualizada
+  sseSource.addEventListener('conv_list', e => {
+    try {
+      const convs = JSON.parse(e.data);
+      updateConvList(convs);
+    } catch(e) {}
+  });
+
+  // El servidor cerró la conexión limpiamente — reconectar
+  sseSource.addEventListener('reconnect', () => {
+    sseSource.close();
+    setTimeout(connectSSE, 500);
+  });
+
+  sseSource.onerror = () => {
+    // EventSource reconecta automáticamente, pero lo forzamos
+    sseSource.close();
+    setTimeout(connectSSE, 2000);
+  };
+}
+
+function updateConvList(convs) {
+  // Actualizar dots de no leídos
+  convs.forEach(conv => {
+    const dot = document.querySelector(`.unread-dot[data-conv-id="${conv.pk}"]`);
+    if (dot) {
+      const n = conv.mensajes_no_leidos || 0;
+      dot.textContent = n;
+      dot.style.display = n > 0 ? 'flex' : 'none';
+
+      // Mover la conversación al tope de la lista si tiene mensajes nuevos
+      if (n > 0) {
+        const convItem = dot.closest('a');
+        const list = convItem && convItem.parentElement;
+        if (list && convItem !== list.firstElementChild) {
+          list.insertBefore(convItem, list.firstElementChild);
+        }
+      }
+    }
+  });
+
+  // Actualizar badge global de no leídos
+  const totalUnread = convs.reduce((s, c) => s + (c.mensajes_no_leidos || 0), 0);
+  const badge = document.getElementById('global-badge');
+  if (badge) {
+    badge.textContent = totalUnread || '';
+    badge.style.display = totalUnread > 0 ? 'flex' : 'none';
+  }
+
+  // Actualizar el contador "(N)" del header
+  const unreadHeader = document.querySelector('.inbox-header .unread-header-count');
+  if (unreadHeader) {
+    unreadHeader.textContent = totalUnread > 0 ? `(${totalUnread})` : '';
+  }
+}
+
+async function markConvRead(convPk) {
+  if (!convPk) return;
   try {
-    const res = await fetch('/whatsapp/api/inbox/updates/');
-    const data = await res.json();
-    const badge = document.getElementById('global-badge');
-    // Update unread dots in list
-    data.conv_ids.forEach(id => {
-      const dot = document.querySelector(`.unread-dot[data-conv-id="${id}"]`);
-      if (dot) dot.style.display = 'flex';
+    await fetch(`/whatsapp/api/mensajes/${convPk}/marcar-leido/`, {
+      method: 'POST',
+      headers: {'X-CSRFToken': CSRF},
     });
   } catch(e) {}
-}, 5000);
-{% endif %}
+}
+
+// Iniciar SSE
+connectSSE();
+
+// Pausar SSE cuando la página pierde foco (ahorra recursos)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (sseSource) sseSource.close();
+  } else {
+    connectSSE();
+  }
+});
 
 // Asignar agente
 async function asignarAgente(agenteId) {

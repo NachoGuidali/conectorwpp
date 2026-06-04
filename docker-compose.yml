@@ -43,7 +43,7 @@ services:
 
   web:
     build: .
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 6 --timeout 120
     volumes:
       - .:/app
       - static_files:/app/staticfiles
