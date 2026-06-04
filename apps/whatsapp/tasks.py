@@ -2,9 +2,41 @@ import logging
 import requests
 from datetime import timedelta
 from celery import shared_task
+from django.db.models import Count, Q
 from django.utils import timezone
 
 logger = logging.getLogger('apps.whatsapp')
+
+
+def auto_asignar_agente(conv) -> bool:
+    """
+    Asigna la conversación al agente activo con menos conversaciones abiertas.
+    Solo considera agentes (rol='agente') activos (is_active=True).
+    Retorna True si se asignó, False si no hay agentes disponibles.
+    """
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+
+    # Agentes activos con su carga actual (conversaciones abiertas no archivadas)
+    agentes = (
+        User.objects
+        .filter(rol=User.ROL_AGENTE, is_active=True)
+        .annotate(carga=Count(
+            'conversaciones',
+            filter=Q(conversaciones__archivada=False)
+        ))
+        .order_by('carga', 'pk')  # menor carga primero, pk como desempate determinista
+    )
+
+    if not agentes.exists():
+        logger.warning('Auto-asignación: no hay agentes activos disponibles para conv %s', conv.pk)
+        return False
+
+    agente = agentes.first()
+    from .models import Conversacion
+    Conversacion.objects.filter(pk=conv.pk).update(agente=agente)
+    logger.info('Conv %s auto-asignada a agente %s (carga: %d)', conv.pk, agente.username, agente.carga)
+    return True
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
@@ -45,6 +77,10 @@ def process_incoming_message(self, message_data: dict):
                 update_fields.append('contacto')
             if update_fields:
                 conv.save(update_fields=update_fields)
+
+        # Auto-asignar si la conversación no tiene agente
+        if not conv.agente_id:
+            auto_asignar_agente(conv)
 
         conv.ultimo_mensaje_at = message_data.get('timestamp', timezone.now())
         conv.mensajes_no_leidos = conv.mensajes_no_leidos + 1

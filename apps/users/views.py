@@ -90,6 +90,43 @@ class UserToggleView(AdminRequiredMixin, View):
         user = get_object_or_404(User, pk=pk)
         if user == request.user:
             return JsonResponse({'ok': False, 'error': 'No podés desactivarte a vos mismo.'})
+        was_active = user.is_active
         user.is_active = not user.is_active
         user.save(update_fields=['is_active'])
+
+        # Si se desactiva un agente, redistribuir sus conversaciones abiertas
+        if was_active and not user.is_active and user.rol == User.ROL_AGENTE:
+            _redistribuir_conversaciones(user)
+
         return JsonResponse({'ok': True, 'is_active': user.is_active})
+
+
+def _redistribuir_conversaciones(agente_desactivado):
+    """
+    Reasigna las conversaciones abiertas del agente desactivado
+    a otros agentes activos (menor carga primero).
+    """
+    from apps.whatsapp.models import Conversacion
+    from apps.whatsapp.tasks import auto_asignar_agente
+
+    # Guardar PKs antes de desasignar
+    conv_pks = list(
+        Conversacion.objects.filter(agente=agente_desactivado, archivada=False)
+        .values_list('pk', flat=True)
+    )
+    count = len(conv_pks)
+    if not count:
+        return
+
+    # Desasignar primero para que auto_asignar no cuente al agente desactivado
+    Conversacion.objects.filter(pk__in=conv_pks).update(agente=None)
+
+    # Reasignar de a una para distribuir carga equitativamente
+    for conv in Conversacion.objects.filter(pk__in=conv_pks):
+        auto_asignar_agente(conv)
+
+    import logging
+    logging.getLogger('apps.whatsapp').info(
+        'Redistribuidas %d conversaciones del agente desactivado %s',
+        count, agente_desactivado.username
+    )
