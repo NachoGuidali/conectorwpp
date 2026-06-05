@@ -49,12 +49,13 @@
   /* QR */
   .qr-container {
     display: flex; align-items: center; justify-content: center;
-    min-height: 220px;
-    background: var(--bg);
+    min-height: 340px;
+    background: #fff;
     border: 1px dashed var(--border);
     border-radius: var(--radius); margin: 16px 0;
+    padding: 16px;
   }
-  .qr-container img { max-width: 200px; border-radius: 8px; }
+  .qr-container img { max-width: 320px; border-radius: 8px; }
   .qr-placeholder { text-align: center; color: var(--text3); font-size: 13px; }
   .qr-placeholder svg { width: 40px; height: 40px; margin-bottom: 8px; opacity: .3; }
 
@@ -164,11 +165,11 @@ function renderQR(container, qrCode) {
   container.appendChild(div);
   new QRCode(div, {
     text: qrCode,
-    width: 280,
-    height: 280,
+    width: 320,
+    height: 320,
     colorDark: '#000000',
     colorLight: '#ffffff',
-    correctLevel: QRCode.CorrectLevel.M,
+    correctLevel: QRCode.CorrectLevel.L,
   });
 }
 
@@ -185,7 +186,7 @@ async function refreshQR() {
       renderQR(container, data.qr_code);
     } else if (data.qr_base64) {
       const src = data.qr_base64.startsWith('data:') ? data.qr_base64 : `data:image/png;base64,${data.qr_base64}`;
-      container.innerHTML = `<img src="${src}" alt="QR" style="max-width:280px;">`;
+      container.innerHTML = `<img src="${src}" alt="QR" style="max-width:320px;">`;
     } else {
       container.innerHTML = '<div class="qr-placeholder"><p style="color:var(--text3);">Generando QR... esperá unos segundos.</p></div>';
     }
