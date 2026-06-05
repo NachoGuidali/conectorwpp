@@ -114,8 +114,15 @@ class InboxView(LoginRequiredMixin, View):
         conv_pk = request.GET.get('conv', '').strip()
         if conv_pk:
             try:
+                # Si viene del filtro archivadas, buscar también en archivadas
+                if archivadas:
+                    conv_qs = Conversacion.objects.filter(archivada=True)
+                    if not request.user.can_see_all:
+                        conv_qs = conv_qs.filter(agente=request.user)
+                else:
+                    conv_qs = _get_convs_qs(request.user)
                 selected_conv = (
-                    _get_convs_qs(request.user)
+                    conv_qs
                     .select_related('contacto')
                     .get(pk=int(conv_pk))
                 )
