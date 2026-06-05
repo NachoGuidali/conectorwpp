@@ -98,6 +98,10 @@ def process_incoming_message(self, message_data: dict):
         conv.mensajes_no_leidos = conv.mensajes_no_leidos + 1
         conv.ventana_activa = True
         conv.ventana_expira_at = timezone.now() + timedelta(hours=24)
+        # Si estaba archivada y escribe de nuevo, desarchivar automáticamente
+        if conv.archivada:
+            conv.archivada = False
+            logger.info('Conv %s desarchivada automáticamente por nuevo mensaje', conv.pk)
         conv.save()
 
         msg_type = message_data.get('type', Mensaje.TIPO_TEXTO)

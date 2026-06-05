@@ -92,6 +92,14 @@ class InboxView(LoginRequiredMixin, View):
         if solo_no_leidos:
             qs = qs.filter(mensajes_no_leidos__gt=0)
 
+        archivadas = request.GET.get('archivadas', '').strip()
+        if archivadas:
+            # Mostrar archivadas en lugar de activas
+            qs = Conversacion.objects.filter(archivada=True)
+            if not request.user.can_see_all:
+                qs = qs.filter(agente=request.user)
+            qs = qs.order_by('-ultimo_mensaje_at')
+
         conversaciones = list(qs[:100])
         unread_total = _get_convs_qs(request.user).filter(mensajes_no_leidos__gt=0).count()
 
@@ -131,6 +139,7 @@ class InboxView(LoginRequiredMixin, View):
             'q': q,
             'sin_agente': sin_agente,
             'solo_no_leidos': solo_no_leidos,
+            'archivadas': archivadas,
             'selected_conv': selected_conv,
             'mensajes': mensajes,
             'plantillas': plantillas,
@@ -201,6 +210,82 @@ class ConversacionMessagesAPIView(LoginRequiredMixin, View):
             'status': m.status, 'timestamp': m.timestamp.strftime('%d/%m %H:%M'),
             'enviado_por': m.enviado_por.get_full_name() if m.enviado_por else '',
         } for m in nuevos]})
+
+
+class DashboardSupervisorView(LoginRequiredMixin, View):
+    template_name = 'whatsapp/dashboard_supervisor.html'
+
+    def get(self, request):
+        if not request.user.can_see_all:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden()
+
+        from django.contrib.auth import get_user_model
+        from django.db.models import Count, Q as Qm
+        User = get_user_model()
+
+        agentes = (
+            User.objects.filter(rol=User.ROL_AGENTE)
+            .annotate(
+                total=Count('conversaciones', filter=Qm(conversaciones__archivada=False)),
+                bot=Count('conversaciones', filter=Qm(conversaciones__archivada=False, conversaciones__bot_n8n_activo=True)),
+                pendiente=Count('conversaciones', filter=Qm(conversaciones__archivada=False, conversaciones__estado='pendiente')),
+                abierta=Count('conversaciones', filter=Qm(conversaciones__archivada=False, conversaciones__estado='abierta', conversaciones__bot_n8n_activo=False)),
+            )
+            .order_by('-en_turno', 'username')
+        )
+
+        sin_asignar = Conversacion.objects.filter(
+            agente__isnull=True, archivada=False
+        ).order_by('-ultimo_mensaje_at')[:20]
+
+        # Detalle de convs por agente (para el panel expandible)
+        agente_pk = request.GET.get('agente')
+        convs_agente = []
+        agente_sel = None
+        if agente_pk:
+            try:
+                agente_sel = User.objects.get(pk=agente_pk, rol=User.ROL_AGENTE)
+                convs_agente = Conversacion.objects.filter(
+                    agente=agente_sel, archivada=False
+                ).order_by('-ultimo_mensaje_at').select_related('contacto')[:50]
+            except User.DoesNotExist:
+                pass
+
+        return render(request, self.template_name, {
+            'agentes': agentes,
+            'sin_asignar': sin_asignar,
+            'agente_sel': agente_sel,
+            'convs_agente': convs_agente,
+            'todos_agentes': User.objects.filter(rol=User.ROL_AGENTE, is_active=True).order_by('username'),
+        })
+
+    def post(self, request):
+        """Reasignar todas las conversaciones de un agente a otro."""
+        if not request.user.can_see_all:
+            return JsonResponse({'ok': False, 'error': 'Sin permisos'}, status=403)
+
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        desde_pk = request.POST.get('desde_agente')
+        hacia_pk = request.POST.get('hacia_agente') or None
+
+        convs = Conversacion.objects.filter(agente_id=desde_pk, archivada=False)
+        if hacia_pk:
+            convs.update(agente_id=hacia_pk)
+            msg = f'{convs.count()} conversaciones reasignadas.'
+        else:
+            # Redistribuir automáticamente
+            from apps.whatsapp.tasks import auto_asignar_agente
+            pks = list(convs.values_list('pk', flat=True))
+            convs.update(agente=None)
+            for conv in Conversacion.objects.filter(pk__in=pks):
+                auto_asignar_agente(conv)
+            msg = f'{len(pks)} conversaciones redistribuidas automáticamente.'
+
+        from django.contrib import messages as msgs
+        msgs.success(request, msg)
+        return redirect(f"{request.path}?agente={desde_pk}")
 
 
 class DashboardAgenteView(LoginRequiredMixin, View):
@@ -382,6 +467,14 @@ class ArchivarConversacionView(LoginRequiredMixin, View):
     def post(self, request, pk):
         conv = get_object_or_404(_get_convs_qs(request.user), pk=pk)
         conv.archivada = True
+        conv.save(update_fields=['archivada'])
+        return JsonResponse({'ok': True})
+
+
+class DesarchivarConversacionView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        conv = get_object_or_404(Conversacion, pk=pk)
+        conv.archivada = False
         conv.save(update_fields=['archivada'])
         return JsonResponse({'ok': True})
 
@@ -657,7 +750,8 @@ class APIEnviarMensajeView(View):
             data = json.loads(request.body)
         except Exception:
             return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
-        phone = data.get('phone', '').strip()
+        # Aceptar 'phone' o 'telefono' indistintamente
+        phone = (data.get('phone') or data.get('telefono') or '').strip()
         message = data.get('message', '').strip()
         media_url = data.get('media_url', '').strip()
         media_type = data.get('media_type', 'image')
@@ -684,6 +778,102 @@ class APIEnviarMensajeView(View):
             return JsonResponse({'ok': True, 'message_id': result.get('id', ''), 'conversacion_id': conv.pk})
         except Exception as e:
             return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class APIContactoView(View):
+    """
+    Crea o actualiza un contacto en el CRM con datos adicionales.
+    Los campos extra se guardan como CampoPersonalizado + ValorCampo.
+    POST /whatsapp/api/contacto/
+    Body: {
+        "phone": "+549...",
+        "nombre": "Juan García",        (opcional)
+        "email": "juan@mail.com",       (opcional)
+        "notas": "...",                 (opcional)
+        "campos": {                     (opcional)
+            "localidad": "Canning",
+            "origen": "whatsapp",
+            "obra_social": "UP"
+        }
+    }
+    """
+    def post(self, request):
+        from django.conf import settings as dj
+        api_key = getattr(dj, 'CRM_API_KEY', '')
+        if not api_key or request.headers.get('X-Api-Key', '') != api_key:
+            return JsonResponse({'ok': False, 'error': 'Unauthorized'}, status=401)
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+        phone = (data.get('phone') or data.get('telefono') or '').strip()
+        if not phone:
+            return JsonResponse({'ok': False, 'error': '"phone" requerido'}, status=400)
+        if not phone.startswith('+'):
+            phone = '+' + phone
+
+        from apps.contacts.models import Contacto, CampoPersonalizado, ValorCampo
+        import re as _re
+
+        nombre = data.get('nombre') or data.get('nombre_completo') or ''
+        email = data.get('email', '')
+        notas = data.get('notas', '')
+
+        defaults = {}
+        if nombre:
+            defaults['nombre'] = nombre
+        if email:
+            defaults['email'] = email
+        if notas:
+            defaults['notas'] = notas
+
+        contacto, created = Contacto.objects.get_or_create(
+            telefono=phone,
+            defaults={**defaults, 'nombre': nombre or phone},
+        )
+        if not created and defaults:
+            for k, v in defaults.items():
+                if v:
+                    setattr(contacto, k, v)
+            contacto.save()
+
+        # Campos personalizados
+        campos_data = data.get('campos') or {}
+        campos_guardados = []
+        for slug, valor in campos_data.items():
+            if not slug or valor is None:
+                continue
+            slug_clean = _re.sub(r'[^\w]', '_', slug.lower().strip())[:100]
+            etiqueta = slug.replace('_', ' ').title()
+            campo, _ = CampoPersonalizado.objects.get_or_create(
+                nombre=slug_clean,
+                defaults={'etiqueta': etiqueta, 'tipo': 'text'},
+            )
+            ValorCampo.objects.update_or_create(
+                contacto=contacto, campo=campo,
+                defaults={'valor': str(valor)},
+            )
+            campos_guardados.append(slug_clean)
+
+        # Vincular conversación si existe
+        try:
+            conv = Conversacion.objects.filter(telefono=phone, contacto__isnull=True).first()
+            if conv:
+                conv.contacto = contacto
+                if nombre and not conv.nombre_contacto:
+                    conv.nombre_contacto = nombre
+                conv.save(update_fields=['contacto', 'nombre_contacto'])
+        except Exception:
+            pass
+
+        return JsonResponse({
+            'ok': True,
+            'contacto_id': contacto.pk,
+            'created': created,
+            'campos_guardados': campos_guardados,
+        })
 
 
 @method_decorator(csrf_exempt, name='dispatch')

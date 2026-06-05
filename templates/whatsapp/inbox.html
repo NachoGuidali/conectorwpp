@@ -357,7 +357,9 @@
              class="filter-btn {% if sin_agente %}on{% endif %}">Sin agente</a>
           {% endif %}
           <a href="?{% if selected_conv %}conv={{ selected_conv.pk }}{% endif %}"
-             class="filter-btn {% if not solo_no_leidos and not sin_agente %}on{% endif %}">Todos</a>
+             class="filter-btn {% if not solo_no_leidos and not sin_agente and not archivadas %}on{% endif %}">Todos</a>
+          <a href="?archivadas=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}"
+             class="filter-btn {% if archivadas %}on{% endif %}">Archivadas</a>
         </div>
       </form>
     </div>
@@ -415,11 +417,20 @@
         </div>
       </div>
       <div class="chat-actions">
+        {% if selected_conv.archivada %}
+        <button class="icon-btn" onclick="desarchivarConv({{ selected_conv.pk }})" title="Desarchivar"
+                style="color:var(--green);">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M10 12l2 2 4-4"/>
+          </svg>
+        </button>
+        {% else %}
         <button class="icon-btn" onclick="archivarConv({{ selected_conv.pk }})" title="Archivar">
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12"/>
           </svg>
         </button>
+        {% endif %}
       </div>
     </div>
 
@@ -1023,10 +1034,16 @@ async function toggleBot(type, activo) {
 async function archivarConv(pk) {
   if (!confirm('¿Archivar esta conversación?')) return;
   const res = await fetch(`/whatsapp/conversacion/${pk}/archivar/`, {
-    method: 'POST',
-    headers: {'X-CSRFToken': CSRF},
+    method: 'POST', headers: {'X-CSRFToken': CSRF},
   });
   if ((await res.json()).ok) window.location = '/whatsapp/inbox/';
+}
+
+async function desarchivarConv(pk) {
+  const res = await fetch(`/whatsapp/conversacion/${pk}/desarchivar/`, {
+    method: 'POST', headers: {'X-CSRFToken': CSRF},
+  });
+  if ((await res.json()).ok) window.location = `/whatsapp/inbox/?conv=${pk}`;
 }
 
 // Modal nueva conv

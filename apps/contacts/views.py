@@ -165,6 +165,9 @@ class ContactoUpdateView(LoginRequiredMixin, View):
             'campos_con_valores': campos_con_valores,
             'grupos': _grupos_existentes(),
             'tipos': TIPOS_CAMPO,
+            'prefill_nombre': contacto.nombre,
+            'prefill_tel': contacto.telefono,
+            'prefill_grupo': contacto.grupo,
         })
 
     def post(self, request, pk):

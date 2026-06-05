@@ -9,6 +9,8 @@
 - [Autenticación](#autenticación)
 - [Webhook entrante (trigger)](#webhook-entrante-trigger)
 - [Enviar mensajes](#enviar-mensajes)
+- [Guardar datos del contacto](#guardar-datos-del-contacto)
+- [Activar / desactivar bot](#activar--desactivar-bot)
 - [Handoff bot → agente](#handoff-bot--agente)
 - [Flujo típico en n8n](#flujo-típico-en-n8n)
 - [Configuración en n8n](#configuración-en-n8n)
@@ -207,6 +209,63 @@ POST /whatsapp/api/enviar/
 
 ---
 
+## Guardar datos del contacto
+
+Crea o actualiza la ficha del contacto en el CRM. Los campos extra se guardan como
+campos personalizados visibles en la tarjeta del contacto. Si el campo no existe, se crea automáticamente.
+
+```
+POST /whatsapp/api/contacto/
+```
+
+**Body completo:**
+```json
+{
+  "phone": "+5491163589975",
+  "nombre": "Juan García",
+  "email": "juan@mail.com",
+  "notas": "Obra social: UP | Recibo sueldo: sí | Grupo familiar: Individual",
+  "campos": {
+    "localidad": "Canning",
+    "origen": "whatsapp",
+    "obra_social": "UP",
+    "recibo_sueldo": "si",
+    "grupo_familiar": "Individual",
+    "edades": "29"
+  }
+}
+```
+
+**Campos del body:**
+
+| Campo | Requerido | Descripción |
+|---|---|---|
+| `phone` | ✅ | Teléfono con código de país. También acepta `telefono` |
+| `nombre` | ❌ | Nombre completo. También acepta `nombre_completo` |
+| `email` | ❌ | Email del contacto |
+| `notas` | ❌ | Notas visibles en la ficha del contacto |
+| `campos` | ❌ | Objeto con campos extra (clave → valor). Se crean automáticamente si no existen |
+
+**Respuesta exitosa:**
+```json
+{
+  "ok": true,
+  "contacto_id": 42,
+  "created": true,
+  "campos_guardados": ["localidad", "origen", "obra_social", "recibo_sueldo"]
+}
+```
+
+`created: true` → contacto nuevo. `created: false` → contacto existente actualizado.
+
+**Notas:**
+- Si el contacto ya existe (mismo teléfono), se actualizan los campos provistos
+- Los `campos` extras son visibles en la ficha del contacto dentro de Waply
+- La conversación de WhatsApp se vincula automáticamente al contacto si no lo estaba
+- No es necesario llamar este endpoint antes de enviar mensajes — es complementario
+
+---
+
 ## Activar / desactivar bot
 
 Prender o apagar el bot n8n para una conversación.
@@ -312,6 +371,14 @@ POST /whatsapp/api/handoff/
                        │
                        ▼
 ┌─────────────────────────────────────────────────────┐
+│  [Bot recopila datos del usuario]                    │
+│  HTTP Request — Guardar contacto (opcional)          │
+│  POST /whatsapp/api/contacto/                        │
+│  Body: { phone, nombre, email, campos: {...} }       │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────┐
 │  [Cuando el bot termina]                             │
 │  HTTP Request — Mensaje de cierre                    │
 │  Body: { phone, message: "Un asesor te contacta..." }│
@@ -396,6 +463,14 @@ POST /whatsapp/api/enviar/
 # Enviar archivo
 POST /whatsapp/api/enviar/
 { "phone": "+549...", "message": "caption", "media_url": "https://...", "media_type": "document" }
+
+# Guardar / actualizar contacto
+POST /whatsapp/api/contacto/
+{ "phone": "+549...", "nombre": "Juan", "email": "...", "notas": "...", "campos": { "localidad": "...", "origen": "whatsapp" } }
+
+# Activar o desactivar bot
+POST /whatsapp/api/bot/
+{ "conversation_id": 42, "activo": false }
 
 # Handoff al agente
 POST /whatsapp/api/handoff/

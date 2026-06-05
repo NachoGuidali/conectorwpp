@@ -8,6 +8,8 @@ def home_redirect(request):
         return redirect('login')
     if request.user.rol == 'agente':
         return redirect('whatsapp:dashboard')
+    if request.user.can_see_all:
+        return redirect('whatsapp:dashboard_supervisor')
     return redirect('whatsapp:inbox')
 
 
