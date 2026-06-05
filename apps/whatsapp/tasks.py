@@ -1,4 +1,5 @@
 import logging
+import random
 import requests
 from datetime import timedelta
 from celery import shared_task
@@ -132,13 +133,26 @@ def process_incoming_message(self, message_data: dict):
             timestamp=message_data.get('timestamp', timezone.now()),
         )
 
-        # Reenviar a n8n si el bot está activo
+        # Reenviar a n8n si el bot está activo (con delay random anti-ban)
         if conv.bot_n8n_activo:
-            _forward_to_n8n(conv, message_data)
+            forward_to_n8n_task.apply_async(
+                args=[conv.pk, message_data],
+                countdown=random.randint(3, 15),
+            )
 
     except Exception as exc:
         logger.exception('Error processing message from %s: %s', phone, exc)
         raise self.retry(exc=exc)
+
+
+@shared_task
+def forward_to_n8n_task(conv_pk: int, message_data: dict):
+    from .models import Conversacion
+    try:
+        conv = Conversacion.objects.get(pk=conv_pk)
+    except Conversacion.DoesNotExist:
+        return
+    _forward_to_n8n(conv, message_data)
 
 
 def _forward_to_n8n(conv, message_data: dict):
