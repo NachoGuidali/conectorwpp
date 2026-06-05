@@ -174,10 +174,39 @@
         </svg>
       </button>
     </form>
-    <div class="avatar-sm" style="margin: 8px 16px 0;" title="{{ user.get_full_name|default:user.username }}">
+    {% if user.rol == 'agente' %}
+    <div style="margin: 6px 10px 0; display:flex; align-items:center; justify-content:center;">
+      <button onclick="toggleTurno()" id="turno-btn"
+              title="{% if user.en_turno %}Estás en turno — click para salir{% else %}Fuera de turno — click para entrar{% endif %}"
+              style="font-size:9px; font-weight:700; letter-spacing:.04em; padding:3px 8px; border-radius:4px; border:none; cursor:pointer;
+                     background:{% if user.en_turno %}#064e3b{% else %}var(--bg4){% endif %};
+                     color:{% if user.en_turno %}#6ee7b7{% else %}var(--text3){% endif %};">
+        {% if user.en_turno %}EN TURNO{% else %}FUERA{% endif %}
+      </button>
+    </div>
+    {% endif %}
+    <div class="avatar-sm" style="margin: 6px 16px 0;" title="{{ user.get_full_name|default:user.username }}">
       {{ user.get_full_name|default:user.username|slice:":1"|upper }}
     </div>
   </div>
+  {% if user.rol == 'agente' %}
+  <script>
+  async function toggleTurno() {
+    const btn = document.getElementById('turno-btn');
+    const res = await fetch('/usuarios/turno/', {
+      method: 'POST',
+      headers: {'X-CSRFToken': '{{ csrf_token }}'},
+    });
+    const data = await res.json();
+    if (data.ok) {
+      btn.textContent = data.en_turno ? 'EN TURNO' : 'FUERA';
+      btn.style.background = data.en_turno ? '#064e3b' : 'var(--bg4)';
+      btn.style.color = data.en_turno ? '#6ee7b7' : 'var(--text3)';
+      btn.title = data.en_turno ? 'Estás en turno — click para salir' : 'Fuera de turno — click para entrar';
+    }
+  }
+  </script>
+  {% endif %}
 </nav>
 
 <div class="main">

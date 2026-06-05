@@ -17,19 +17,31 @@ def auto_asignar_agente(conv) -> bool:
     from django.contrib.auth import get_user_model
     User = get_user_model()
 
-    # Agentes activos con su carga actual (conversaciones abiertas no archivadas)
+    # Agentes activos, en turno, con su carga actual
     agentes = (
         User.objects
-        .filter(rol=User.ROL_AGENTE, is_active=True)
+        .filter(rol=User.ROL_AGENTE, is_active=True, en_turno=True)
         .annotate(carga=Count(
             'conversaciones',
             filter=Q(conversaciones__archivada=False)
         ))
-        .order_by('carga', 'pk')  # menor carga primero, pk como desempate determinista
+        .order_by('carga', 'pk')
     )
 
     if not agentes.exists():
-        logger.warning('Auto-asignación: no hay agentes activos disponibles para conv %s', conv.pk)
+        # Fallback: si no hay nadie en turno, intentar con cualquier agente activo
+        agentes = (
+            User.objects
+            .filter(rol=User.ROL_AGENTE, is_active=True)
+            .annotate(carga=Count(
+                'conversaciones',
+                filter=Q(conversaciones__archivada=False)
+            ))
+            .order_by('carga', 'pk')
+        )
+
+    if not agentes.exists():
+        logger.warning('Auto-asignación: no hay agentes disponibles para conv %s', conv.pk)
         return False
 
     agente = agentes.first()

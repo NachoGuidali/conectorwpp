@@ -2,6 +2,15 @@ from django.urls import path
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect
 
+
+def home_redirect(request):
+    if not request.user.is_authenticated:
+        return redirect('login')
+    if request.user.rol == 'agente':
+        return redirect('whatsapp:dashboard')
+    return redirect('whatsapp:inbox')
+
+
 urlpatterns = [
-    path('', login_required(lambda r: redirect('whatsapp:inbox')), name='home'),
+    path('', login_required(home_redirect), name='home'),
 ]

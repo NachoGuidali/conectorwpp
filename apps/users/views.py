@@ -85,6 +85,15 @@ class UserUpdateView(AdminRequiredMixin, View):
         return redirect('users:list')
 
 
+class TurnoToggleView(LoginRequiredMixin, View):
+    """El agente activa/desactiva su disponibilidad para recibir conversaciones."""
+    def post(self, request):
+        user = request.user
+        user.en_turno = not user.en_turno
+        user.save(update_fields=['en_turno'])
+        return JsonResponse({'ok': True, 'en_turno': user.en_turno})
+
+
 class UserToggleView(AdminRequiredMixin, View):
     def post(self, request, pk):
         user = get_object_or_404(User, pk=pk)

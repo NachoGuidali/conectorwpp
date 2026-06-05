@@ -15,6 +15,7 @@ class User(AbstractUser):
     rol = models.CharField(max_length=20, choices=ROL_CHOICES, default=ROL_AGENTE)
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     telefono = models.CharField(max_length=20, blank=True)
+    en_turno = models.BooleanField(default=True, verbose_name='En turno')
 
     class Meta:
         verbose_name = 'Usuario'

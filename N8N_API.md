@@ -207,6 +207,28 @@ POST /whatsapp/api/enviar/
 
 ---
 
+## Activar / desactivar bot
+
+Prender o apagar el bot n8n para una conversación.
+
+```
+POST /whatsapp/api/bot/
+```
+
+**Apagar bot** (agente toma la conversación):
+```json
+{"conversation_id": 42, "activo": false}
+```
+
+**Prender bot** (reactivar para esa conversación):
+```json
+{"conversation_id": 42, "activo": true}
+```
+
+> **Nota:** `/api/handoff/` hace lo mismo que apagar el bot pero además cambia el estado a "Pendiente de agente" y notifica al agente. Para un handoff completo usá `/api/handoff/`. Para simplemente apagar/prender el bot sin cambiar estado, usá `/api/bot/`.
+
+---
+
 ## Handoff bot → agente
 
 Llamar cuando el bot termina la atención y quiere que un agente humano tome la conversación.

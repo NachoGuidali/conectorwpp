@@ -203,6 +203,35 @@ class ConversacionMessagesAPIView(LoginRequiredMixin, View):
         } for m in nuevos]})
 
 
+class DashboardAgenteView(LoginRequiredMixin, View):
+    template_name = 'whatsapp/dashboard_agente.html'
+
+    def get(self, request):
+        from django.db.models import Q as Qm
+        convs = Conversacion.objects.filter(
+            agente=request.user, archivada=False
+        ).order_by('-ultimo_mensaje_at').select_related('contacto')
+
+        bot_activo = convs.filter(bot_n8n_activo=True)
+        pendientes = convs.filter(estado=Conversacion.ESTADO_PENDIENTE)
+        abiertas = convs.filter(
+            estado=Conversacion.ESTADO_ABIERTA, bot_n8n_activo=False
+        )
+        cerradas_hoy = Conversacion.objects.filter(
+            agente=request.user,
+            estado=Conversacion.ESTADO_CERRADA,
+            ultimo_mensaje_at__date=timezone.now().date(),
+        ).count()
+
+        return render(request, self.template_name, {
+            'bot_activo': bot_activo,
+            'pendientes': pendientes,
+            'abiertas': abiertas,
+            'cerradas_hoy': cerradas_hoy,
+            'total': convs.count(),
+        })
+
+
 class InboxUpdatesAPIView(LoginRequiredMixin, View):
     def get(self, request):
         qs = _get_convs_qs(request.user).filter(mensajes_no_leidos__gt=0)
@@ -655,6 +684,40 @@ class APIEnviarMensajeView(View):
             return JsonResponse({'ok': True, 'message_id': result.get('id', ''), 'conversacion_id': conv.pk})
         except Exception as e:
             return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class APIBotToggleExternoView(View):
+    """
+    n8n puede prender/apagar el bot via API sin sesión de usuario.
+    POST /whatsapp/api/bot/
+    Body: {"conversation_id": 42, "activo": false}
+      o:  {"phone": "+549...", "activo": true}
+    """
+    def post(self, request):
+        from django.conf import settings as dj
+        api_key = getattr(dj, 'CRM_API_KEY', '')
+        if not api_key or request.headers.get('X-Api-Key', '') != api_key:
+            return JsonResponse({'ok': False, 'error': 'Unauthorized'}, status=401)
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+        activo = data.get('activo', False)
+        conv = None
+        if data.get('conversation_id'):
+            conv = Conversacion.objects.filter(pk=data['conversation_id']).first()
+        elif data.get('phone'):
+            phone = data['phone']
+            if not phone.startswith('+'): phone = '+' + phone
+            conv = Conversacion.objects.filter(telefono=phone).first()
+
+        if not conv:
+            return JsonResponse({'ok': False, 'error': 'Conversación no encontrada'}, status=404)
+
+        Conversacion.objects.filter(pk=conv.pk).update(bot_n8n_activo=activo)
+        return JsonResponse({'ok': True, 'conversation_id': conv.pk, 'bot_n8n_activo': activo})
 
 
 @method_decorator(csrf_exempt, name='dispatch')

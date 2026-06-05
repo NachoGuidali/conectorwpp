@@ -9,6 +9,7 @@ urlpatterns = [
 
     # Inbox principal
     path('inbox/', views.InboxView.as_view(), name='inbox'),
+    path('dashboard/', views.DashboardAgenteView.as_view(), name='dashboard'),
     path('api/inbox/updates/', views.InboxUpdatesAPIView.as_view(), name='inbox_updates'),
     path('api/inbox/sse/', views.InboxSSEView.as_view(), name='inbox_sse'),
     path('api/mensajes/<int:pk>/marcar-leido/', views.MarcarLeidoView.as_view(), name='marcar_leido'),
@@ -37,4 +38,5 @@ urlpatterns = [
     # API externa (para n8n)
     path('api/enviar/', views.APIEnviarMensajeView.as_view(), name='api_enviar'),
     path('api/handoff/', views.APIHandoffView.as_view(), name='api_handoff'),
+    path('api/bot/', views.APIBotToggleExternoView.as_view(), name='api_bot_toggle'),
 ]
