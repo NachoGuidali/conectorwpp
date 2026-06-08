@@ -47,6 +47,7 @@ def auto_asignar_agente(conv) -> bool:
 
     agente = agentes.first()
     from .models import Conversacion
+    conv.agente = agente
     Conversacion.objects.filter(pk=conv.pk).update(agente=agente)
     logger.info('Conv %s auto-asignada a agente %s (carga: %d)', conv.pk, agente.username, agente.carga)
     return True
