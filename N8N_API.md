@@ -286,6 +286,19 @@ POST /whatsapp/api/bot/
 
 > **Nota:** `/api/handoff/` hace lo mismo que apagar el bot pero además cambia el estado a "Pendiente de agente" y notifica al agente. Para un handoff completo usá `/api/handoff/`. Para simplemente apagar/prender el bot sin cambiar estado, usá `/api/bot/`.
 
+### Notificación CRM → n8n al reactivar el bot desde el chat
+
+Cuando el **asesor** reactiva el bot n8n manualmente desde la conversación (botón en el chat, no vía `/api/bot/`), el CRM llama automáticamente a:
+
+```
+POST https://n8n.supregsolutions.com/webhook/liberar-asesor
+Content-Type: application/json
+
+{ "phone": "5491130125525" }
+```
+
+Esto le avisa a n8n que el asesor liberó la conversación para que el bot retome la atención de ese número. La URL se configura con la variable de entorno `N8N_LIBERAR_ASESOR_URL`.
+
 ---
 
 ## Handoff bot → agente
@@ -432,6 +445,7 @@ Usar esta credencial en todos los nodos HTTP Request que llamen al CRM.
 ```env
 # n8n
 N8N_WEBHOOK_URL=https://tu-n8n.com/webhook/tu-trigger-id
+N8N_LIBERAR_ASESOR_URL=https://tu-n8n.com/webhook/liberar-asesor
 
 # Clave para que n8n llame al CRM
 CRM_API_KEY=un-token-largo-y-secreto

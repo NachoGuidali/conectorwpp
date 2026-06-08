@@ -186,6 +186,20 @@ def _forward_to_n8n(conv, message_data: dict):
         logger.warning('Error reenviando a n8n conv %s: %s', conv.pk, e)
 
 
+@shared_task
+def liberar_asesor_n8n_task(phone: str):
+    from django.conf import settings
+    url = getattr(settings, 'N8N_LIBERAR_ASESOR_URL', '').strip()
+    if not url:
+        return
+    try:
+        r = requests.post(url, json={'phone': phone.lstrip('+')}, timeout=10)
+        r.raise_for_status()
+        logger.info('Notificado liberar-asesor a n8n para %s (status %s)', phone, r.status_code)
+    except Exception as e:
+        logger.warning('Error notificando liberar-asesor a n8n para %s: %s', phone, e)
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_whatsapp_message_task(self, mensaje_id: int):
     from .models import Mensaje

@@ -112,6 +112,9 @@ WHATSAPP_WEBHOOK_TOKEN = os.environ.get('WHATSAPP_WEBHOOK_TOKEN', '')
 # n8n
 N8N_WEBHOOK_URL = os.environ.get('N8N_WEBHOOK_URL', '')
 
+# Webhook de n8n a notificar cuando el asesor reactiva el bot en una conversación
+N8N_LIBERAR_ASESOR_URL = os.environ.get('N8N_LIBERAR_ASESOR_URL', '')
+
 # CRM API Key (para n8n enviar mensajes)
 CRM_API_KEY = os.environ.get('CRM_API_KEY', '')
 

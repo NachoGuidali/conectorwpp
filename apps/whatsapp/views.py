@@ -609,6 +609,9 @@ class BotToggleView(LoginRequiredMixin, View):
         elif bot_type == 'n8n':
             conv.bot_n8n_activo = activo
             conv.save(update_fields=['bot_n8n_activo'])
+            if activo:
+                from .tasks import liberar_asesor_n8n_task
+                liberar_asesor_n8n_task.delay(conv.telefono)
         else:
             return JsonResponse({'ok': False, 'error': 'bot_type inválido'}, status=400)
         return JsonResponse({'ok': True, 'bot_type': bot_type, 'activo': activo})
