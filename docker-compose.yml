@@ -8,6 +8,7 @@ services:
 
   db:
     image: postgres:15
+    mem_limit: 512m
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-waply}
       POSTGRES_USER: ${POSTGRES_USER:-waply}
@@ -18,10 +19,12 @@ services:
 
   redis:
     image: redis:7-alpine
+    mem_limit: 128m
     restart: unless-stopped
 
   evolution-api:
     image: evoapicloud/evolution-api:latest
+    mem_limit: 768m
     restart: unless-stopped
     environment:
       - SERVER_URL=${PUBLIC_URL:-http://localhost:8080}
@@ -44,6 +47,7 @@ services:
   web:
     build: .
     command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120
+    mem_limit: 512m
     volumes:
       - .:/app
       - static_files:/app/staticfiles
@@ -56,6 +60,7 @@ services:
   celery:
     build: .
     command: celery -A config worker -l info -Q default,whatsapp
+    mem_limit: 512m
     volumes:
       - .:/app
     env_file: .env
@@ -67,6 +72,7 @@ services:
   celery-beat:
     build: .
     command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    mem_limit: 192m
     volumes:
       - .:/app
     env_file: .env
