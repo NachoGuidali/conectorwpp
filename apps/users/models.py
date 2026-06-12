@@ -16,6 +16,7 @@ class User(AbstractUser):
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     telefono = models.CharField(max_length=20, blank=True)
     en_turno = models.BooleanField(default=True, verbose_name='En turno')
+    recibe_asignaciones = models.BooleanField(default=True, verbose_name='Recibe asignaciones automáticas')
 
     class Meta:
         verbose_name = 'Usuario'

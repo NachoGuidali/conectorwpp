@@ -80,6 +80,13 @@
         <label>Contraseña{% if obj %} (dejar vacío para no cambiar){% endif %}</label>
         <input type="password" name="password" placeholder="••••••••">
       </div>
+      <div class="form-group">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" name="recibe_asignaciones" style="width: auto;" {% if data.recibe_asignaciones or not obj %}checked{% endif %}>
+          Recibe asignaciones automáticas de conversaciones entrantes
+        </label>
+        <div class="hint">Desactivar si este agente solo va a hacer conversaciones salientes y no debe recibir conversaciones nuevas automáticamente.</div>
+      </div>
       <div class="actions">
         <button type="submit" class="btn btn-green">Guardar</button>
         <a href="{% url 'users:list' %}" class="btn btn-outline">Cancelar</a>

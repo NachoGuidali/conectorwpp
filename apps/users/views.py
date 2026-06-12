@@ -38,6 +38,7 @@ class UserCreateView(AdminRequiredMixin, View):
         rol = request.POST.get('rol', User.ROL_AGENTE)
         telefono = request.POST.get('telefono', '').strip()
         password = request.POST.get('password', '').strip()
+        recibe_asignaciones = request.POST.get('recibe_asignaciones') == 'on'
 
         if not username or not password:
             messages.error(request, 'Usuario y contraseña son requeridos.')
@@ -50,7 +51,7 @@ class UserCreateView(AdminRequiredMixin, View):
         user = User.objects.create_user(
             username=username, email=email, password=password,
             first_name=first_name, last_name=last_name,
-            rol=rol, telefono=telefono,
+            rol=rol, telefono=telefono, recibe_asignaciones=recibe_asignaciones,
         )
         messages.success(request, f'Usuario {user.username} creado.')
         return redirect('users:list')
@@ -67,6 +68,7 @@ class UserUpdateView(AdminRequiredMixin, View):
             'email': user.email or '',
             'telefono': getattr(user, 'telefono', '') or '',
             'rol': user.rol or '',
+            'recibe_asignaciones': user.recibe_asignaciones,
         }
         return render(request, self.template_name, {'obj': user, 'rol_choices': User.ROL_CHOICES, 'data': data})
 
@@ -77,6 +79,7 @@ class UserUpdateView(AdminRequiredMixin, View):
         user.last_name = request.POST.get('last_name', '').strip()
         user.rol = request.POST.get('rol', user.rol)
         user.telefono = request.POST.get('telefono', '').strip()
+        user.recibe_asignaciones = request.POST.get('recibe_asignaciones') == 'on'
         password = request.POST.get('password', '').strip()
         if password:
             user.set_password(password)

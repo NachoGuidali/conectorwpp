@@ -18,10 +18,10 @@ def auto_asignar_agente(conv) -> bool:
     from django.contrib.auth import get_user_model
     User = get_user_model()
 
-    # Agentes activos, en turno, con su carga actual
+    # Agentes activos, en turno, que reciben asignaciones automáticas, con su carga actual
     agentes = (
         User.objects
-        .filter(rol=User.ROL_AGENTE, is_active=True, en_turno=True)
+        .filter(rol=User.ROL_AGENTE, is_active=True, en_turno=True, recibe_asignaciones=True)
         .annotate(carga=Count(
             'conversaciones',
             filter=Q(conversaciones__archivada=False)
@@ -30,10 +30,10 @@ def auto_asignar_agente(conv) -> bool:
     )
 
     if not agentes.exists():
-        # Fallback: si no hay nadie en turno, intentar con cualquier agente activo
+        # Fallback: si no hay nadie en turno, intentar con cualquier agente activo que reciba asignaciones
         agentes = (
             User.objects
-            .filter(rol=User.ROL_AGENTE, is_active=True)
+            .filter(rol=User.ROL_AGENTE, is_active=True, recibe_asignaciones=True)
             .annotate(carga=Count(
                 'conversaciones',
                 filter=Q(conversaciones__archivada=False)
