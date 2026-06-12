@@ -511,6 +511,7 @@ class EnviarMediaView(LoginRequiredMixin, View):
         conv = get_object_or_404(Conversacion, pk=pk)
         archivo = request.FILES.get('archivo')
         caption = request.POST.get('caption', '').strip()
+        is_ptt = request.POST.get('ptt') == '1'
 
         if not archivo:
             return JsonResponse({'ok': False, 'error': 'No se recibió ningún archivo.'}, status=400)
@@ -546,19 +547,27 @@ class EnviarMediaView(LoginRequiredMixin, View):
             raw = archivo.read()
             b64 = base64.b64encode(raw).decode('utf-8')
             # Evolution API v2: some versions need raw base64, others need data URI
-            # Try raw base64 first; if 400, retry with data URI
+            # Try raw base64 first; if falla, reintentar con data URI
+            send_fns = []
+            if is_ptt and mediatype == 'audio':
+                from .sender import send_whatsapp_audio
+                send_fns.append(lambda data: send_whatsapp_audio(conv.telefono, data, filename=filename))
+            send_fns.append(lambda data: send_media_message(
+                conv.telefono, data, mediatype, filename=filename, caption=caption,
+            ))
+
             result = None
             last_exc = None
-            for media_data in [b64, f'data:{mime};base64,{b64}']:
-                try:
-                    result = send_media_message(
-                        conv.telefono, media_data, mediatype,
-                        filename=filename, caption=caption,
-                    )
+            for send_fn in send_fns:
+                for media_data in [b64, f'data:{mime};base64,{b64}']:
+                    try:
+                        result = send_fn(media_data)
+                        break
+                    except Exception as exc:
+                        last_exc = exc
+                        logger.warning('Retry con formato alternativo para media...')
+                if result is not None:
                     break
-                except Exception as exc:
-                    last_exc = exc
-                    logger.warning('Retry con formato alternativo para media...')
             if result is None:
                 raise last_exc
             msg_id = result.get('id', '')

@@ -328,6 +328,31 @@
     color: #fff; font-size: 12px; z-index: 10;
   }
 
+  /* Grabación de audio */
+  #mic-btn.recording { color: var(--red); }
+  .recording-bar {
+    display: none;
+    align-items: center; gap: 10px;
+    padding: 8px 12px; background: var(--bg2);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .recording-bar.visible { display: flex; }
+  .recording-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--red); flex-shrink: 0;
+    animation: pulse-blue 1s infinite;
+  }
+  .recording-time {
+    font-family: 'DM Mono', monospace; font-size: 13px; color: var(--text);
+    flex-shrink: 0;
+  }
+  .recording-label { flex: 1; font-size: 13px; color: var(--text3); }
+  .media-preview-bar.visible ~ form .input-row #mic-btn,
+  .recording-bar.visible ~ form .input-row {
+    display: none;
+  }
+
   .chat-contact-name, .chat-contact-phone {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
@@ -405,7 +430,7 @@
     <div class="conv-list" id="conv-list">
       {% for conv in conversaciones %}
       {% with last_msg=conv.mensajes.last %}
-      <a href="?conv={{ conv.pk }}{% if q %}&q={{ q }}{% endif %}{% if solo_no_leidos %}&no_leidos=1{% endif %}{% if sin_agente %}&sin_agente=1{% endif %}"
+      <a href="?conv={{ conv.pk }}{% if q %}&q={{ q }}{% endif %}{% if solo_no_leidos %}&no_leidos=1{% endif %}{% if sin_agente %}&sin_agente=1{% endif %}{% if archivadas %}&archivadas=1{% endif %}"
          class="conv-item {% if selected_conv.pk == conv.pk %}selected{% endif %}"
          data-conv-id="{{ conv.pk }}">
         <div class="conv-avatar">{{ conv.get_display_name|slice:":1"|upper }}</div>
@@ -533,6 +558,14 @@
         <button type="button" class="media-preview-remove" onclick="cancelMedia()" title="Cancelar">×</button>
       </div>
 
+      <!-- Barra de grabación de audio -->
+      <div class="recording-bar" id="recording-bar">
+        <span class="recording-dot"></span>
+        <span class="recording-time" id="recording-time">0:00</span>
+        <span class="recording-label">Grabando audio...</span>
+        <button type="button" class="media-preview-remove" onclick="cancelRecording()" title="Cancelar">×</button>
+      </div>
+
       <form method="post" id="send-form">
         {% csrf_token %}
         <input type="hidden" name="conv_pk" value="{{ selected_conv.pk }}">
@@ -553,6 +586,12 @@
           <button type="button" class="attach-btn" onclick="document.getElementById('attach-input').click()" title="Adjuntar archivo">
             <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+            </svg>
+          </button>
+          <button type="button" class="attach-btn" id="mic-btn" onclick="toggleRecording()" title="Grabar audio">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 10v2a7 7 0 01-14 0v-2M12 19v3"/>
             </svg>
           </button>
           <textarea class="msg-textarea" name="body" id="msg-input"
@@ -799,6 +838,7 @@ function handleEnter(e) {
 
 // ── Envío de archivos ────────────────────────────────────────────────
 let selectedFile = null;
+let isVoiceNote = false;
 
 function handleFileSelect(input) {
   const file = input.files[0];
@@ -830,12 +870,104 @@ function handleFileSelect(input) {
 
 function cancelMedia() {
   selectedFile = null;
+  isVoiceNote = false;
   document.getElementById('attach-input').value = '';
   document.getElementById('media-preview-bar').classList.remove('visible');
   document.getElementById('media-preview-content').innerHTML = '';
   document.getElementById('media-caption').value = '';
+  document.getElementById('media-caption').style.display = '';
   document.getElementById('send-text-btn').style.display = 'flex';
   document.getElementById('send-media-btn').style.display = 'none';
+}
+
+// ── Grabación de audio ──────────────────────────────────────────────
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordingStream = null;
+let recordingStartTime = null;
+let recordingTimerInterval = null;
+let discardRecording = false;
+
+if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+  const micBtn = document.getElementById('mic-btn');
+  if (micBtn) micBtn.style.display = 'none';
+}
+
+async function toggleRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    discardRecording = false;
+    mediaRecorder.stop();
+    return;
+  }
+  if (selectedFile) return;
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    alert('No se pudo acceder al micrófono. Revisá los permisos del navegador.');
+    return;
+  }
+  recordingStream = stream;
+  recordedChunks = [];
+  discardRecording = false;
+
+  const supportedType = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+    .find(t => MediaRecorder.isTypeSupported(t));
+  mediaRecorder = supportedType ? new MediaRecorder(stream, { mimeType: supportedType }) : new MediaRecorder(stream);
+
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    recordingStream.getTracks().forEach(t => t.stop());
+    recordingStream = null;
+    clearInterval(recordingTimerInterval);
+    document.getElementById('recording-bar').classList.remove('visible');
+    document.getElementById('mic-btn').classList.remove('recording');
+
+    if (discardRecording || recordedChunks.length === 0) {
+      recordedChunks = [];
+      return;
+    }
+    const mime = mediaRecorder.mimeType || 'audio/webm';
+    const blob = new Blob(recordedChunks, { type: mime });
+    const ext = mime.includes('ogg') ? 'ogg' : mime.includes('mp4') ? 'm4a' : 'webm';
+    isVoiceNote = true;
+    selectedFile = new File([blob], `audio-${Date.now()}.${ext}`, { type: mime });
+    showVoicePreview(selectedFile);
+  };
+
+  mediaRecorder.start();
+  document.getElementById('recording-bar').classList.add('visible');
+  document.getElementById('mic-btn').classList.add('recording');
+  recordingStartTime = Date.now();
+  updateRecordingTime();
+  recordingTimerInterval = setInterval(updateRecordingTime, 500);
+}
+
+function updateRecordingTime() {
+  const secs = Math.floor((Date.now() - recordingStartTime) / 1000);
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  const el = document.getElementById('recording-time');
+  if (el) el.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function cancelRecording() {
+  discardRecording = true;
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+  }
+}
+
+function showVoicePreview(file) {
+  const bar = document.getElementById('media-preview-bar');
+  const content = document.getElementById('media-preview-content');
+  const url = URL.createObjectURL(file);
+  content.innerHTML = `<audio controls src="${url}" style="height:36px; max-width:200px;"></audio>`;
+  bar.classList.add('visible');
+  document.getElementById('media-caption').style.display = 'none';
+  document.getElementById('send-text-btn').style.display = 'none';
+  document.getElementById('send-media-btn').style.display = 'flex';
 }
 
 async function sendMedia() {
@@ -851,6 +983,7 @@ async function sendMedia() {
   const formData = new FormData();
   formData.append('archivo', selectedFile);
   formData.append('caption', caption);
+  formData.append('ptt', isVoiceNote ? '1' : '0');
   formData.append('csrfmiddlewaretoken', CSRF);
 
   try {
