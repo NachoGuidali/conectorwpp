@@ -327,11 +327,49 @@
     align-items: center; justify-content: center;
     color: #fff; font-size: 12px; z-index: 10;
   }
+
+  .chat-contact-name, .chat-contact-phone {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* ===== Responsive (mobile) ===== */
+  .chat-back-btn, .info-toggle-btn { display: none; }
+  .info-panel-mobile-header { display: none; }
+  .info-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.5); z-index: 55;
+  }
+
+  @media (max-width: 768px) {
+    .inbox-layout { position: relative; }
+
+    .conv-panel { width: 100%; border-right: none; }
+    .chat-panel { display: none; width: 100%; }
+    .inbox-layout.has-conv .conv-panel { display: none; }
+    .inbox-layout.has-conv .chat-panel { display: flex; }
+
+    .chat-back-btn, .info-toggle-btn { display: flex; }
+
+    .msg { max-width: 85%; }
+
+    .info-panel {
+      display: none;
+      position: fixed; top: 0; right: 0; bottom: 0;
+      width: 85%; max-width: 320px;
+      z-index: 60;
+      box-shadow: -8px 0 24px rgba(0,0,0,.5);
+    }
+    .info-panel.open { display: flex; }
+    .info-overlay.open { display: block; }
+    .info-panel-mobile-header { display: flex; justify-content: flex-end; padding: 8px 12px 0; }
+
+    .modal { width: 92vw; max-width: 92vw; padding: 18px; }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="inbox-layout">
+<div class="inbox-layout {% if selected_conv %}has-conv{% endif %}">
 
   <!-- Panel izquierdo -->
   <div class="conv-panel">
@@ -406,6 +444,12 @@
     {% if selected_conv %}
 
     <div class="chat-header">
+      <a href="?conv=&{% if q %}q={{ q|urlencode }}&{% endif %}{% if solo_no_leidos %}no_leidos=1&{% endif %}{% if sin_agente %}sin_agente=1&{% endif %}{% if archivadas %}archivadas=1{% endif %}"
+         class="icon-btn chat-back-btn" title="Volver a conversaciones">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </a>
       <div class="conv-avatar" style="width:36px; height:36px;">{{ selected_conv.get_display_name|slice:":1"|upper }}</div>
       <div class="chat-header-info">
         <div class="chat-contact-name">{{ selected_conv.get_display_name }}</div>
@@ -417,6 +461,11 @@
         </div>
       </div>
       <div class="chat-actions">
+        <button class="icon-btn info-toggle-btn" onclick="openInfoPanel()" title="Info de contacto">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </button>
         {% if selected_conv.archivada %}
         <button class="icon-btn" onclick="desarchivarConv({{ selected_conv.pk }})" title="Desarchivar"
                 style="color:var(--green);">
@@ -535,7 +584,15 @@
 
   <!-- Panel derecho — info y asignación -->
   {% if selected_conv %}
-  <div class="info-panel">
+  <div class="info-overlay" id="info-overlay" onclick="closeInfoPanel()"></div>
+  <div class="info-panel" id="info-panel">
+    <div class="info-panel-mobile-header">
+      <button class="icon-btn info-close-btn" onclick="closeInfoPanel()" title="Cerrar">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
     <div class="info-section">
       <div class="info-label" style="display:flex; justify-content:space-between; align-items:center;">
         Contacto
@@ -1005,6 +1062,16 @@ document.addEventListener('visibilitychange', () => {
     connectSSE();
   }
 });
+
+// Panel de info (mobile)
+function openInfoPanel() {
+  document.getElementById('info-panel').classList.add('open');
+  document.getElementById('info-overlay').classList.add('open');
+}
+function closeInfoPanel() {
+  document.getElementById('info-panel').classList.remove('open');
+  document.getElementById('info-overlay').classList.remove('open');
+}
 
 // Asignar agente
 async function asignarAgente(agenteId) {
