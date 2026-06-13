@@ -564,6 +564,11 @@
         <span class="recording-time" id="recording-time">0:00</span>
         <span class="recording-label">Grabando audio...</span>
         <button type="button" class="media-preview-remove" onclick="cancelRecording()" title="Cancelar">×</button>
+        <button type="button" class="send-btn" onclick="finishRecording()" title="Detener y previsualizar" style="width:36px; height:36px;">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+        </button>
       </div>
 
       <form method="post" id="send-form">
@@ -954,6 +959,13 @@ function updateRecordingTime() {
 
 function cancelRecording() {
   discardRecording = true;
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+  }
+}
+
+function finishRecording() {
+  discardRecording = false;
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop();
   }
