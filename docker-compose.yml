@@ -37,6 +37,8 @@ services:
       - CACHE_REDIS_ENABLED=true
       - CACHE_REDIS_URI=redis://redis:6379/2
       - CACHE_REDIS_PREFIX_KEY=evolution
+      - QRCODE_LIMIT=3
+      - QRCODE_EXPIRATION_TIME=60
     depends_on:
       - db
       - redis
