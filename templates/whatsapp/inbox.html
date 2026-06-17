@@ -576,6 +576,7 @@
         <input type="hidden" name="conv_pk" value="{{ selected_conv.pk }}">
         <input type="hidden" name="action" value="send_text">
         {% if q %}<input type="hidden" name="_q" value="{{ q }}">{% endif %}
+        {% if archivadas %}<input type="hidden" name="_archivadas" value="1">{% endif %}
 
         <!-- Input oculto para archivo -->
         <input type="file" id="attach-input" style="display:none;"
@@ -1347,6 +1348,7 @@ async function sendTemplate() {
   addField('conv_pk', '{{ selected_conv.pk|default:"" }}');
   addField('action', 'send_template');
   addField('plantilla_id', selectedPlantillaId);
+  {% if archivadas %}addField('_archivadas', '1');{% endif %}
   let j = 1;
   while (document.getElementById(`var_${j}`)) {
     addField(`var_${j}`, document.getElementById(`var_${j}`).value);

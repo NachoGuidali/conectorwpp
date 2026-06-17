@@ -28,9 +28,11 @@ class SupervisorRequiredMixin(LoginRequiredMixin):
         return super().dispatch(request, *args, **kwargs)
 
 
-def _get_convs_qs(user):
+def _get_convs_qs(user, include_archived=False):
     from django.db.models import Q
-    qs = Conversacion.objects.select_related('agente').filter(archivada=False).order_by('-ultimo_mensaje_at', '-pk')
+    qs = Conversacion.objects.select_related('agente').order_by('-ultimo_mensaje_at', '-pk')
+    if not include_archived:
+        qs = qs.filter(archivada=False)
     if not user.can_see_all:
         qs = qs.filter(agente=user)
     return qs
@@ -160,7 +162,7 @@ class InboxView(LoginRequiredMixin, View):
         if not conv_pk:
             return redirect('whatsapp:inbox')
 
-        conv = get_object_or_404(_get_convs_qs(request.user), pk=conv_pk)
+        conv = get_object_or_404(_get_convs_qs(request.user, include_archived=True), pk=conv_pk)
         action = request.POST.get('action', '')
 
         if action == 'send_text':
@@ -199,13 +201,15 @@ class InboxView(LoginRequiredMixin, View):
         params = f'conv={conv.pk}'
         if request.POST.get('_q'):
             params += f'&q={request.POST.get("_q")}'
+        if request.POST.get('_archivadas'):
+            params += '&archivadas=1'
         from django.urls import reverse
         return redirect(f"{reverse('whatsapp:inbox')}?{params}")
 
 
 class ConversacionMessagesAPIView(LoginRequiredMixin, View):
     def get(self, request, pk):
-        conv = get_object_or_404(_get_convs_qs(request.user), pk=pk)
+        conv = get_object_or_404(_get_convs_qs(request.user, include_archived=True), pk=pk)
         since_id = int(request.GET.get('since_id', 0))
         nuevos = conv.mensajes.filter(pk__gt=since_id).order_by('timestamp')
         if nuevos.exists():
