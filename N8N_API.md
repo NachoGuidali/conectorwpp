@@ -1,4 +1,4 @@
-# Waply — Documentación de API para n8n
+# SPwap — Documentación de API para n8n
 
 **Base URL:** `https://ras.supregsolutions.com`
 
@@ -260,7 +260,7 @@ POST /whatsapp/api/contacto/
 
 **Notas:**
 - Si el contacto ya existe (mismo teléfono), se actualizan los campos provistos
-- Los `campos` extras son visibles en la ficha del contacto dentro de Waply
+- Los `campos` extras son visibles en la ficha del contacto dentro de SPwap
 - La conversación de WhatsApp se vincula automáticamente al contacto si no lo estaba
 - No es necesario llamar este endpoint antes de enviar mensajes — es complementario
 

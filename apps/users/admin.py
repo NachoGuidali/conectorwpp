@@ -7,5 +7,5 @@ class CustomUserAdmin(UserAdmin):
     list_display = ('username', 'email', 'get_full_name', 'rol', 'is_active')
     list_filter = ('rol', 'is_active')
     fieldsets = UserAdmin.fieldsets + (
-        ('Waply', {'fields': ('rol', 'avatar', 'telefono')}),
+        ('SPwap', {'fields': ('rol', 'avatar', 'telefono')}),
     )

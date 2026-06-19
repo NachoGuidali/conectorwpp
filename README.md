@@ -1,4 +1,4 @@
-# Waply — Plataforma WhatsApp Multi-agente
+# SPwap — Plataforma WhatsApp Multi-agente
 
 Plataforma de WhatsApp tipo WATI, construida con Django + Evolution API (sin verificación de Meta).
 

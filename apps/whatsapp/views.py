@@ -272,12 +272,20 @@ class DashboardSupervisorView(LoginRequiredMixin, View):
         })
 
     def post(self, request):
-        """Reasignar todas las conversaciones de un agente a otro."""
+        """Reasignar todas las conversaciones de un agente a otro, o togglear su disponibilidad para la cola."""
         if not request.user.can_see_all:
             return JsonResponse({'ok': False, 'error': 'Sin permisos'}, status=403)
 
         from django.contrib.auth import get_user_model
         User = get_user_model()
+
+        toggle_pk = request.POST.get('toggle_recibe_pk')
+        if toggle_pk:
+            agente = get_object_or_404(User, pk=toggle_pk, rol=User.ROL_AGENTE)
+            agente.recibe_asignaciones = not agente.recibe_asignaciones
+            agente.save(update_fields=['recibe_asignaciones'])
+            return redirect(request.POST.get('next') or request.path)
+
         desde_pk = request.POST.get('desde_agente')
         hacia_pk = request.POST.get('hacia_agente') or None
 

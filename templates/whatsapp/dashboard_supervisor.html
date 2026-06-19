@@ -1,5 +1,5 @@
 {% extends "base/base.html" %}
-{% block title %}Dashboard supervisor — Waply{% endblock %}
+{% block title %}Dashboard supervisor — SPwap{% endblock %}
 {% block nav_dashboard_sup %}active{% endblock %}
 
 {% block extra_css %}
@@ -13,12 +13,23 @@
   .agent-card {
     background:var(--bg2); border:1px solid var(--border);
     border-radius:var(--radius); padding:16px 18px;
-    text-decoration:none; color:inherit; transition:border-color .15s;
+    transition:border-color .15s;
     display:block; position:relative;
   }
   .agent-card:hover { border-color:var(--green); }
   .agent-card.selected { border-color:var(--green); background:var(--bg3); }
   .agent-card.off { opacity:.6; }
+  .agent-card-link { display:block; text-decoration:none; color:inherit; }
+
+  .agent-asig {
+    margin-top:12px; padding-top:10px; border-top:1px solid var(--border);
+    display:flex; align-items:center; gap:6px;
+  }
+  .agent-asig label {
+    display:flex; align-items:center; gap:6px; cursor:pointer;
+    font-size:11px; color:var(--text3);
+  }
+  .agent-asig input[type=checkbox] { width:auto; cursor:pointer; }
 
   .agent-top { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
   .agent-avatar {
@@ -116,35 +127,46 @@
   <!-- Grid de agentes -->
   <div class="agents-grid">
     {% for ag in agentes %}
-    <a href="?agente={{ ag.pk }}" class="agent-card {% if agente_sel.pk == ag.pk %}selected{% endif %} {% if not ag.is_active %}off{% endif %}">
-      <div class="agent-top">
-        <div class="agent-avatar">{{ ag.get_full_name|default:ag.username|slice:":1"|upper }}</div>
-        <div>
-          <div class="agent-name">{{ ag.get_full_name|default:ag.username }}</div>
-          {% if not ag.is_active %}
-          <span class="agent-status status-inactive">INACTIVO</span>
-          {% elif ag.en_turno %}
-          <span class="agent-status status-turno">EN TURNO</span>
-          {% else %}
-          <span class="agent-status status-off">FUERA</span>
-          {% endif %}
+    <div class="agent-card {% if agente_sel.pk == ag.pk %}selected{% endif %} {% if not ag.is_active %}off{% endif %}">
+      <a href="?agente={{ ag.pk }}" class="agent-card-link">
+        <div class="agent-top">
+          <div class="agent-avatar">{{ ag.get_full_name|default:ag.username|slice:":1"|upper }}</div>
+          <div>
+            <div class="agent-name">{{ ag.get_full_name|default:ag.username }}</div>
+            {% if not ag.is_active %}
+            <span class="agent-status status-inactive">INACTIVO</span>
+            {% elif ag.en_turno %}
+            <span class="agent-status status-turno">EN TURNO</span>
+            {% else %}
+            <span class="agent-status status-off">FUERA</span>
+            {% endif %}
+          </div>
         </div>
-      </div>
-      <div class="agent-stats">
-        <div class="agent-stat">
-          <div class="n n-bot">{{ ag.bot }}</div>
-          <div class="l">Bot</div>
+        <div class="agent-stats">
+          <div class="agent-stat">
+            <div class="n n-bot">{{ ag.bot }}</div>
+            <div class="l">Bot</div>
+          </div>
+          <div class="agent-stat">
+            <div class="n n-pend">{{ ag.pendiente }}</div>
+            <div class="l">Listos</div>
+          </div>
+          <div class="agent-stat">
+            <div class="n n-open">{{ ag.abierta }}</div>
+            <div class="l">Abiertos</div>
+          </div>
         </div>
-        <div class="agent-stat">
-          <div class="n n-pend">{{ ag.pendiente }}</div>
-          <div class="l">Listos</div>
-        </div>
-        <div class="agent-stat">
-          <div class="n n-open">{{ ag.abierta }}</div>
-          <div class="l">Abiertos</div>
-        </div>
-      </div>
-    </a>
+      </a>
+      <form method="post" class="agent-asig">
+        {% csrf_token %}
+        <input type="hidden" name="toggle_recibe_pk" value="{{ ag.pk }}">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <label>
+          <input type="checkbox" name="_chk" {% if ag.recibe_asignaciones %}checked{% endif %} onchange="this.form.submit()">
+          En cola de asignación
+        </label>
+      </form>
+    </div>
     {% empty %}
     <p style="color:var(--text3); font-size:13px;">No hay agentes creados.</p>
     {% endfor %}
