@@ -66,6 +66,47 @@ class ContactoListView(LoginRequiredMixin, View):
         })
 
 
+class ContactoExportarView(LoginRequiredMixin, View):
+    def get(self, request):
+        from django.http import HttpResponse
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+
+        qs = Contacto.objects.all().order_by('nombre')
+        q = request.GET.get('q', '').strip()
+        if q:
+            qs = qs.filter(Q(nombre__icontains=q) | Q(telefono__icontains=q) | Q(email__icontains=q))
+        grupo = request.GET.get('grupo', '').strip()
+        if grupo:
+            qs = qs.filter(grupo=grupo)
+
+        campos = list(CampoPersonalizado.objects.filter(activo=True).order_by('orden', 'etiqueta'))
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Contactos'
+
+        headers = ['Nombre', 'Teléfono', 'Email', 'Grupo', 'Notas', 'Fecha de creación'] + [c.etiqueta for c in campos]
+        ws.append(headers)
+
+        for c in qs.prefetch_related('valores'):
+            val_map = {v.campo_id: v.valor for v in c.valores.all()}
+            ws.append([
+                c.nombre, c.telefono, c.email, c.grupo, c.notas,
+                c.created_at.strftime('%d/%m/%Y %H:%M') if c.created_at else '',
+            ] + [val_map.get(campo.pk, '') for campo in campos])
+
+        for i in range(1, len(headers) + 1):
+            ws.column_dimensions[get_column_letter(i)].width = 22
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="contactos.xlsx"'
+        wb.save(response)
+        return response
+
+
 class ContactoDetailView(LoginRequiredMixin, View):
     def get(self, request, pk):
         from apps.whatsapp.models import Mensaje as MensajeModel

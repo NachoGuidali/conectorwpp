@@ -5,6 +5,7 @@ app_name = 'contacts'
 
 urlpatterns = [
     path('', views.ContactoListView.as_view(), name='list'),
+    path('exportar/', views.ContactoExportarView.as_view(), name='exportar'),
     path('nuevo/', views.ContactoCreateView.as_view(), name='create'),
     path('<int:pk>/', views.ContactoDetailView.as_view(), name='detail'),
     path('<int:pk>/editar/', views.ContactoUpdateView.as_view(), name='update'),
