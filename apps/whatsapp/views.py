@@ -307,6 +307,115 @@ class DashboardSupervisorView(LoginRequiredMixin, View):
         return redirect(f"{request.path}?agente={desde_pk}")
 
 
+class ReporteConversacionesView(LoginRequiredMixin, View):
+    template_name = 'whatsapp/reporte_conversaciones.html'
+
+    def _rango(self, request):
+        import datetime
+        hoy = timezone.localdate()
+        desde_str = request.GET.get('desde', '')
+        hasta_str = request.GET.get('hasta', '')
+        try:
+            desde = datetime.date.fromisoformat(desde_str) if desde_str else hoy - datetime.timedelta(days=29)
+        except ValueError:
+            desde = hoy - datetime.timedelta(days=29)
+        try:
+            hasta = datetime.date.fromisoformat(hasta_str) if hasta_str else hoy
+        except ValueError:
+            hasta = hoy
+        return desde, hasta
+
+    def _datos(self, desde, hasta):
+        from django.db.models import Count
+        from django.db.models.functions import TruncDate
+
+        qs = Conversacion.objects.filter(created_at__date__gte=desde, created_at__date__lte=hasta)
+
+        por_dia = list(
+            qs.annotate(dia=TruncDate('created_at'))
+            .values('dia').annotate(total=Count('pk')).order_by('dia')
+        )
+        por_agente = list(
+            qs.values('agente__username', 'agente__first_name', 'agente__last_name')
+            .annotate(total=Count('pk')).order_by('-total')
+        )
+        por_estado = list(
+            qs.values('estado').annotate(total=Count('pk')).order_by('-total')
+        )
+        estado_labels = dict(Conversacion.ESTADO_CHOICES)
+        for row in por_estado:
+            row['estado_label'] = estado_labels.get(row['estado'], row['estado'])
+        for row in por_agente:
+            nombre = f"{row['agente__first_name']} {row['agente__last_name']}".strip()
+            row['agente_nombre'] = nombre or row['agente__username'] or 'Sin agente'
+
+        return {
+            'total': qs.count(),
+            'por_dia': por_dia,
+            'por_agente': por_agente,
+            'por_estado': por_estado,
+        }
+
+    def get(self, request):
+        if not request.user.can_see_all:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden()
+
+        desde, hasta = self._rango(request)
+        datos = self._datos(desde, hasta)
+
+        return render(request, self.template_name, {
+            'desde': desde,
+            'hasta': hasta,
+            **datos,
+        })
+
+
+class ReporteConversacionesExportarView(ReporteConversacionesView):
+    def get(self, request):
+        if not request.user.can_see_all:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden()
+
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+
+        desde, hasta = self._rango(request)
+        datos = self._datos(desde, hasta)
+
+        wb = Workbook()
+
+        ws = wb.active
+        ws.title = 'Por día'
+        ws.append(['Fecha', 'Cantidad de conversaciones'])
+        for row in datos['por_dia']:
+            ws.append([row['dia'].strftime('%d/%m/%Y'), row['total']])
+        ws.column_dimensions['A'].width = 16
+        ws.column_dimensions['B'].width = 26
+
+        ws2 = wb.create_sheet('Por agente')
+        ws2.append(['Agente', 'Cantidad de conversaciones'])
+        for row in datos['por_agente']:
+            ws2.append([row['agente_nombre'], row['total']])
+        ws2.column_dimensions['A'].width = 26
+        ws2.column_dimensions['B'].width = 26
+
+        ws3 = wb.create_sheet('Por estado')
+        ws3.append(['Estado', 'Cantidad de conversaciones'])
+        for row in datos['por_estado']:
+            ws3.append([row['estado_label'], row['total']])
+        ws3.column_dimensions['A'].width = 20
+        ws3.column_dimensions['B'].width = 26
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        nombre = f'conversaciones_{desde.isoformat()}_a_{hasta.isoformat()}.xlsx'
+        response['Content-Disposition'] = f'attachment; filename="{nombre}"'
+        wb.save(response)
+        return response
+
+
 class DashboardAgenteView(LoginRequiredMixin, View):
     template_name = 'whatsapp/dashboard_agente.html'
 

@@ -113,8 +113,16 @@
 {% block content %}
 <div class="dash-wrap">
 
-  <h1>Dashboard supervisor</h1>
-  <p class="sub">Estado de agentes y conversaciones asignadas</p>
+  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h1>Dashboard supervisor</h1>
+      <p class="sub">Estado de agentes y conversaciones asignadas</p>
+    </div>
+    <a href="{% url 'whatsapp:reporte_conversaciones' %}" class="btn btn-outline">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      Reporte de conversaciones
+    </a>
+  </div>
 
   {% if messages %}
   {% for m in messages %}
