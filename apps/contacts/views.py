@@ -86,13 +86,17 @@ class ContactoExportarView(LoginRequiredMixin, View):
         ws = wb.active
         ws.title = 'Contactos'
 
-        headers = ['Nombre', 'Teléfono', 'Email', 'Grupo', 'Notas', 'Fecha de creación'] + [c.etiqueta for c in campos]
+        headers = ['Nombre', 'Teléfono', 'Email', 'Grupo', 'Notas', 'Agente asignado', 'Fecha de creación'] + [c.etiqueta for c in campos]
         ws.append(headers)
 
-        for c in qs.prefetch_related('valores'):
+        for c in qs.prefetch_related('valores', 'conversaciones__agente'):
             val_map = {v.campo_id: v.valor for v in c.valores.all()}
+            conv = c.conversaciones.first()
+            agente = ''
+            if conv and conv.agente:
+                agente = f"{conv.agente.first_name} {conv.agente.last_name}".strip() or conv.agente.username
             ws.append([
-                c.nombre, c.telefono, c.email, c.grupo, c.notas,
+                c.nombre, c.telefono, c.email, c.grupo, c.notas, agente,
                 c.created_at.strftime('%d/%m/%Y %H:%M') if c.created_at else '',
             ] + [val_map.get(campo.pk, '') for campo in campos])
 
