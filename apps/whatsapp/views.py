@@ -1075,6 +1075,41 @@ class APIContactoView(View):
 
 
 @method_decorator(csrf_exempt, name='dispatch')
+class APIArchivarConversacionView(View):
+    """
+    Archiva (o desarchiva) una conversación desde el bot / n8n.
+    POST /whatsapp/api/archivar/
+    Body: {"phone": "+549..."} o {"conversation_id": 42}
+          Opcional: {"archivar": false} para desarchivar (default: true)
+    Header: X-Api-Key: <CRM_API_KEY>
+    """
+    def post(self, request):
+        from django.conf import settings as dj
+        api_key = getattr(dj, 'CRM_API_KEY', '')
+        if not api_key or request.headers.get('X-Api-Key', '') != api_key:
+            return JsonResponse({'ok': False, 'error': 'Unauthorized'}, status=401)
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+        conv = None
+        if data.get('conversation_id'):
+            conv = Conversacion.objects.filter(pk=data['conversation_id']).first()
+        elif data.get('phone'):
+            phone = data['phone']
+            if not phone.startswith('+'): phone = '+' + phone
+            conv = Conversacion.objects.filter(telefono=phone).first()
+
+        if not conv:
+            return JsonResponse({'ok': False, 'error': 'Conversación no encontrada'}, status=404)
+
+        archivar = data.get('archivar', True)
+        Conversacion.objects.filter(pk=conv.pk).update(archivada=archivar)
+        return JsonResponse({'ok': True, 'conversation_id': conv.pk, 'archivada': archivar})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
 class APIBotToggleExternoView(View):
     """
     n8n puede prender/apagar el bot via API sin sesión de usuario.

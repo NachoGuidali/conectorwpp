@@ -45,4 +45,5 @@ urlpatterns = [
     path('api/contacto/', views.APIContactoView.as_view(), name='api_contacto'),
     path('api/handoff/', views.APIHandoffView.as_view(), name='api_handoff'),
     path('api/bot/', views.APIBotToggleExternoView.as_view(), name='api_bot_toggle'),
+    path('api/archivar/', views.APIArchivarConversacionView.as_view(), name='api_archivar'),
 ]
