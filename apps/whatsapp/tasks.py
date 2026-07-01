@@ -64,15 +64,18 @@ def process_incoming_message(self, message_data: dict):
         phone = '+' + phone
 
     try:
-        # Try to find linked contact
-        contacto = None
-        try:
-            from apps.contacts.models import Contacto
-            contacto = Contacto.objects.get(telefono=phone)
-        except Exception:
-            pass
-
-        contact_name = (contacto.nombre if contacto else None) or message_data.get('contact_name', '')
+        # Buscar o crear contacto automáticamente al primer mensaje
+        from apps.contacts.models import Contacto
+        contact_name = message_data.get('contact_name', '')
+        contacto, _ = Contacto.objects.get_or_create(
+            telefono=phone,
+            defaults={'nombre': contact_name or phone},
+        )
+        # Si el contacto existía pero le faltaba nombre, actualizarlo
+        if not contacto.nombre or contacto.nombre == contacto.telefono:
+            if contact_name:
+                contacto.nombre = contact_name
+                contacto.save(update_fields=['nombre'])
 
         conv, created = Conversacion.objects.get_or_create(
             telefono=phone,
