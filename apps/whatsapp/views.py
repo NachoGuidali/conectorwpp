@@ -94,6 +94,10 @@ class InboxView(LoginRequiredMixin, View):
         if solo_no_leidos:
             qs = qs.filter(mensajes_no_leidos__gt=0)
 
+        sin_contacto = request.GET.get('sin_contacto', '').strip()
+        if sin_contacto:
+            qs = qs.filter(contacto__isnull=True)
+
         archivadas = request.GET.get('archivadas', '').strip()
         if archivadas:
             # Mostrar archivadas en lugar de activas
@@ -148,6 +152,7 @@ class InboxView(LoginRequiredMixin, View):
             'q': q,
             'sin_agente': sin_agente,
             'solo_no_leidos': solo_no_leidos,
+            'sin_contacto': sin_contacto,
             'archivadas': archivadas,
             'selected_conv': selected_conv,
             'mensajes': mensajes,
@@ -203,6 +208,8 @@ class InboxView(LoginRequiredMixin, View):
             params += f'&q={request.POST.get("_q")}'
         if request.POST.get('_archivadas'):
             params += '&archivadas=1'
+        if request.POST.get('_sin_contacto'):
+            params += '&sin_contacto=1'
         from django.urls import reverse
         return redirect(f"{reverse('whatsapp:inbox')}?{params}")
 
@@ -250,6 +257,10 @@ class DashboardSupervisorView(LoginRequiredMixin, View):
             agente__isnull=True, archivada=False
         ).order_by('-ultimo_mensaje_at')[:20]
 
+        sin_contacto = Conversacion.objects.filter(
+            contacto__isnull=True, archivada=False
+        ).select_related('agente').order_by('-ultimo_mensaje_at')[:50]
+
         # Detalle de convs por agente (para el panel expandible)
         agente_pk = request.GET.get('agente')
         convs_agente = []
@@ -266,6 +277,7 @@ class DashboardSupervisorView(LoginRequiredMixin, View):
         return render(request, self.template_name, {
             'agentes': agentes,
             'sin_asignar': sin_asignar,
+            'sin_contacto': sin_contacto,
             'agente_sel': agente_sel,
             'convs_agente': convs_agente,
             'todos_agentes': User.objects.filter(rol=User.ROL_AGENTE, is_active=True).order_by('username'),
@@ -305,6 +317,52 @@ class DashboardSupervisorView(LoginRequiredMixin, View):
         from django.contrib import messages as msgs
         msgs.success(request, msg)
         return redirect(f"{request.path}?agente={desde_pk}")
+
+
+class SinContactoExportarView(LoginRequiredMixin, View):
+    def get(self, request):
+        if not request.user.can_see_all:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden()
+
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+
+        qs = (
+            Conversacion.objects.filter(contacto__isnull=True, archivada=False)
+            .select_related('agente')
+            .order_by('-ultimo_mensaje_at')
+        )
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Sin contacto'
+        headers = ['Nombre / Teléfono', 'Teléfono', 'Agente', 'Estado', 'Último mensaje', 'Creado']
+        ws.append(headers)
+
+        estado_labels = dict(Conversacion.ESTADO_CHOICES)
+        for conv in qs:
+            agente_nombre = ''
+            if conv.agente:
+                agente_nombre = f"{conv.agente.first_name} {conv.agente.last_name}".strip() or conv.agente.username
+            ws.append([
+                conv.nombre_contacto or conv.telefono,
+                conv.telefono,
+                agente_nombre,
+                estado_labels.get(conv.estado, conv.estado),
+                conv.ultimo_mensaje_at.strftime('%d/%m/%Y %H:%M') if conv.ultimo_mensaje_at else '',
+                conv.created_at.strftime('%d/%m/%Y %H:%M') if conv.created_at else '',
+            ])
+
+        for i in range(1, len(headers) + 1):
+            ws.column_dimensions[get_column_letter(i)].width = 24
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="conversaciones_sin_contacto.xlsx"'
+        wb.save(response)
+        return response
 
 
 class ReporteConversacionesView(LoginRequiredMixin, View):

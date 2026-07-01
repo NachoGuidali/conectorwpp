@@ -39,7 +39,7 @@
     outline: none;
   }
   .search-input:focus { border-color: var(--green); }
-  .filter-row { display: flex; gap: 6px; }
+  .filter-row { display: flex; gap: 6px; flex-wrap: wrap; }
   .filter-btn {
     flex: 1; padding: 5px 8px;
     font-size: 11px; font-weight: 500;
@@ -419,8 +419,10 @@
           <a href="?{% if q %}q={{ q }}&{% endif %}sin_agente=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}"
              class="filter-btn {% if sin_agente %}on{% endif %}">Sin agente</a>
           {% endif %}
+          <a href="?{% if q %}q={{ q }}&{% endif %}sin_contacto=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}"
+             class="filter-btn {% if sin_contacto %}on{% endif %}">Sin contacto</a>
           <a href="?{% if selected_conv %}conv={{ selected_conv.pk }}{% endif %}"
-             class="filter-btn {% if not solo_no_leidos and not sin_agente and not archivadas %}on{% endif %}">Todos</a>
+             class="filter-btn {% if not solo_no_leidos and not sin_agente and not sin_contacto and not archivadas %}on{% endif %}">Todos</a>
           <a href="?archivadas=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}"
              class="filter-btn {% if archivadas %}on{% endif %}">Archivadas</a>
         </div>
@@ -577,6 +579,7 @@
         <input type="hidden" name="action" value="send_text">
         {% if q %}<input type="hidden" name="_q" value="{{ q }}">{% endif %}
         {% if archivadas %}<input type="hidden" name="_archivadas" value="1">{% endif %}
+        {% if sin_contacto %}<input type="hidden" name="_sin_contacto" value="1">{% endif %}
 
         <!-- Input oculto para archivo -->
         <input type="file" id="attach-input" style="display:none;"
@@ -1349,6 +1352,7 @@ async function sendTemplate() {
   addField('action', 'send_template');
   addField('plantilla_id', selectedPlantillaId);
   {% if archivadas %}addField('_archivadas', '1');{% endif %}
+  {% if sin_contacto %}addField('_sin_contacto', '1');{% endif %}
   let j = 1;
   while (document.getElementById(`var_${j}`)) {
     addField(`var_${j}`, document.getElementById(`var_${j}`).value);
