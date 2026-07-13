@@ -1055,7 +1055,10 @@ class APIContactoView(View):
             )
             campos_guardados.append(slug_clean)
 
-        # Vincular conversación si existe
+        # Vincular conversación si existe y obtener agente asignado
+        agente_id = None
+        agente_username = None
+        agente_nombre = None
         try:
             conv = Conversacion.objects.filter(telefono=phone, contacto__isnull=True).first()
             if conv:
@@ -1063,6 +1066,16 @@ class APIContactoView(View):
                 if nombre and not conv.nombre_contacto:
                     conv.nombre_contacto = nombre
                 conv.save(update_fields=['contacto', 'nombre_contacto'])
+
+            # Buscar agente en la conversación activa (ya vinculada o recién vinculada)
+            conv_activa = Conversacion.objects.filter(
+                telefono=phone, archivada=False
+            ).select_related('agente').order_by('-ultimo_mensaje_at').first()
+            if conv_activa and conv_activa.agente:
+                ag = conv_activa.agente
+                agente_id = ag.pk
+                agente_username = ag.username
+                agente_nombre = f"{ag.first_name} {ag.last_name}".strip() or ag.username
         except Exception:
             pass
 
@@ -1071,6 +1084,9 @@ class APIContactoView(View):
             'contacto_id': contacto.pk,
             'created': created,
             'campos_guardados': campos_guardados,
+            'agente_id': agente_id,
+            'agente_username': agente_username,
+            'agente_nombre': agente_nombre,
         })
 
 
