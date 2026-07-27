@@ -146,7 +146,7 @@ def send_interactive_message(to: str, body_text: str, buttons: list, header_text
 
 def delete_message(message_id: str, phone: str) -> bool:
     url = _evo_url(f'/chat/deleteMessage/{_instance()}')
-    payload = {'id': message_id, 'phone': _normalize_phone(phone), 'fromMe': True}
+    payload = {'id': message_id, 'phone': _normalize_phone(phone), 'fromMe': True, 'everyone': True}
     start = time.monotonic()
     response = None
     try:
