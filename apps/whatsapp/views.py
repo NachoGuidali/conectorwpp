@@ -225,7 +225,8 @@ class ConversacionMessagesAPIView(LoginRequiredMixin, View):
             'id': m.pk, 'direccion': m.direccion, 'tipo': m.tipo,
             'contenido': m.contenido, 'media_url': m.media_url,
             'media_filename': m.media_filename, 'media_mime': m.media_mime,
-            'status': m.status, 'timestamp': m.timestamp.strftime('%d/%m %H:%M'),
+            'status': m.status, 'borrado': m.borrado,
+            'timestamp': m.timestamp.strftime('%d/%m %H:%M'),
             'enviado_por': m.enviado_por.get_full_name() if m.enviado_por else '',
         } for m in nuevos]})
 
@@ -668,6 +669,24 @@ class DesarchivarConversacionView(LoginRequiredMixin, View):
 class MarcarLeidoView(LoginRequiredMixin, View):
     def post(self, request, pk):
         Conversacion.objects.filter(pk=pk).update(mensajes_no_leidos=0)
+        return JsonResponse({'ok': True})
+
+
+class BorrarMensajeView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        from .models import Mensaje
+        msg = get_object_or_404(Mensaje, pk=pk)
+        conv = msg.conversacion
+        if not request.user.can_see_all and conv.agente != request.user:
+            return JsonResponse({'ok': False, 'error': 'Sin permisos'}, status=403)
+        if msg.direccion != Mensaje.DIR_SALIENTE:
+            return JsonResponse({'ok': False, 'error': 'Solo mensajes enviados'}, status=400)
+        if msg.borrado:
+            return JsonResponse({'ok': True})
+        from .sender import delete_message
+        if msg.whatsapp_message_id:
+            delete_message(msg.whatsapp_message_id, conv.telefono)
+        Mensaje.objects.filter(pk=pk).update(borrado=True, contenido='')
         return JsonResponse({'ok': True})
 
 

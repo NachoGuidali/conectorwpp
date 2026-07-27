@@ -97,10 +97,13 @@ class Mensaje(models.Model):
     TIPO_VIDEO = 'video'
     TIPO_PLANTILLA = 'template'
     TIPO_INTERACTIVO = 'interactive'
+    TIPO_CONTACTO = 'contact'
+    TIPO_STICKER = 'sticker'
     TIPO_CHOICES = [
         (TIPO_TEXTO, 'Texto'), (TIPO_IMAGEN, 'Imagen'), (TIPO_DOCUMENTO, 'Documento'),
         (TIPO_AUDIO, 'Audio'), (TIPO_VIDEO, 'Video'),
         (TIPO_PLANTILLA, 'Plantilla'), (TIPO_INTERACTIVO, 'Interactivo'),
+        (TIPO_CONTACTO, 'Contacto'), (TIPO_STICKER, 'Sticker'),
     ]
 
     DIR_ENTRANTE = 'in'
@@ -127,6 +130,7 @@ class Mensaje(models.Model):
     media_mime = models.CharField(max_length=100, blank=True)
     media_filename = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDIENTE)
+    borrado = models.BooleanField(default=False)
     enviado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     timestamp = models.DateTimeField()
     error_detalle = models.TextField(blank=True)

@@ -144,6 +144,22 @@ def send_interactive_message(to: str, body_text: str, buttons: list, header_text
         _log_request(url, 'POST', payload, response, int((time.monotonic() - start) * 1000))
 
 
+def delete_message(message_id: str, phone: str) -> bool:
+    url = _evo_url(f'/chat/deleteMessage/{_instance()}')
+    payload = {'id': message_id, 'phone': _normalize_phone(phone), 'fromMe': True}
+    start = time.monotonic()
+    response = None
+    try:
+        response = requests.delete(url, json=payload, headers=_evo_headers(), timeout=10)
+        response.raise_for_status()
+        return True
+    except requests.RequestException as e:
+        logger.error('Error deleting message %s: %s', message_id, e)
+        return False
+    finally:
+        _log_request(url, 'DELETE', payload, response, int((time.monotonic() - start) * 1000))
+
+
 def get_connection_state() -> str:
     url = _evo_url(f'/instance/connectionState/{_instance()}')
     try:

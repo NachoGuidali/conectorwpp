@@ -280,6 +280,30 @@
   .msg-audio { max-width: 250px; height: 36px; }
   .msg-caption { font-size: 12px; color: var(--text2); margin-top: 4px; }
 
+  /* Contact card */
+  .msg-contact-card {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--bg2); border-radius: 8px; padding: 8px 12px;
+    min-width: 180px;
+  }
+  .msg-contact-card .contact-avatar {
+    width: 36px; height: 36px; border-radius: 50%; background: var(--green);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .msg-contact-card .contact-name { font-size: 13px; font-weight: 600; }
+  .msg-contact-card .contact-phone { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+  /* Delete message button */
+  .msg-delete-btn {
+    display: none; background: none; border: none; cursor: pointer;
+    color: var(--text3); padding: 2px 4px; border-radius: 4px;
+    font-size: 13px; line-height: 1; margin-left: 4px;
+    transition: color .15s;
+  }
+  .msg-delete-btn:hover { color: #e53e3e; }
+  .msg:hover .msg-delete-btn { display: inline-flex; }
+  .msg-borrado { font-style: italic; color: var(--text3); font-size: 12px; }
+
   /* Attach button */
   .attach-btn {
     background: none; border: none; cursor: pointer; padding: 8px;
@@ -514,7 +538,9 @@
       {% for msg in mensajes %}
       <div class="msg {{ msg.direccion }}" data-msg-id="{{ msg.pk }}">
         <div class="msg-bubble">
-          {% if msg.tipo == 'image' and msg.media_url %}
+          {% if msg.borrado %}
+            <span class="msg-borrado">Mensaje eliminado</span>
+          {% elif msg.tipo == 'image' and msg.media_url %}
             <a href="{{ msg.media_url }}" target="_blank" rel="noopener"><img src="{{ msg.media_url }}" class="msg-media-img" onerror="this.parentElement.innerHTML='[Imagen]'"></a>
             {% if msg.contenido %}<div class="msg-caption">{{ msg.contenido|escape }}</div>{% endif %}
           {% elif msg.tipo == 'document' and msg.media_url %}
@@ -530,6 +556,16 @@
             {% if msg.contenido %}<div class="msg-caption">{{ msg.contenido|escape }}</div>{% endif %}
           {% elif msg.tipo == 'sticker' and msg.media_url %}
             <img src="{{ msg.media_url }}" style="max-width:100px;">
+          {% elif msg.tipo == 'contact' %}
+            <div class="msg-contact-card">
+              <div class="contact-avatar">
+                <svg width="18" height="18" fill="white" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+              </div>
+              <div>
+                <div class="contact-name">{{ msg.contenido|escape }}</div>
+                {% if msg.media_filename %}<div class="contact-phone">{{ msg.media_filename|escape }}</div>{% endif %}
+              </div>
+            </div>
           {% else %}
             <span class="msg-text">{{ msg.contenido|linebreaksbr }}</span>
           {% endif %}
@@ -537,10 +573,11 @@
         <div class="msg-time">
           {{ msg.timestamp|date:"d/m H:i" }}
           {% if msg.enviado_por %} · {{ msg.enviado_por.get_full_name|default:msg.enviado_por.username }}{% endif %}
-          {% if msg.direccion == 'out' %}
+          {% if msg.direccion == 'out' and not msg.borrado %}
           <span class="msg-status-icon {% if msg.status == 'read' %}read{% endif %}">
             {% if msg.status == 'read' %}✓✓{% elif msg.status == 'delivered' %}✓✓{% elif msg.status == 'sent' %}✓{% else %}○{% endif %}
           </span>
+          <button class="msg-delete-btn" onclick="borrarMensaje({{ msg.pk }})" title="Borrar mensaje">×</button>
           {% endif %}
         </div>
       </div>
@@ -796,6 +833,8 @@ function escHtml(s) {
 
 // Render message content based on type
 function renderContenido(msg) {
+  if (msg.borrado) return `<span class="msg-borrado">Mensaje eliminado</span>`;
+
   const tipo = msg.tipo || 'text';
   const url = msg.media_url || '';
   const fname = msg.media_filename || '';
@@ -822,8 +861,33 @@ function renderContenido(msg) {
   if (tipo === 'sticker' && url) {
     return `<img src="${escHtml(url)}" style="max-width:100px;">`;
   }
+  if (tipo === 'contact') {
+    const personIcon = `<svg width="18" height="18" fill="white" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>`;
+    const phone = fname ? `<div class="contact-phone">${escHtml(fname)}</div>` : '';
+    return `<div class="msg-contact-card"><div class="contact-avatar">${personIcon}</div><div><div class="contact-name">${escHtml(msg.contenido||'Contacto')}</div>${phone}</div></div>`;
+  }
   const text = msg.contenido || '';
   return `<span class="msg-text">${escHtml(text).replace(/\n/g,'<br>')}</span>`;
+}
+
+async function borrarMensaje(pk) {
+  if (!confirm('¿Eliminar este mensaje?')) return;
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+  const resp = await fetch(`/whatsapp/api/mensajes/${pk}/borrar/`, {
+    method: 'POST',
+    headers: {'X-CSRFToken': csrfToken},
+  });
+  const data = await resp.json();
+  if (data.ok) {
+    const bubble = document.querySelector(`.msg[data-msg-id="${pk}"] .msg-bubble`);
+    if (bubble) bubble.innerHTML = '<span class="msg-borrado">Mensaje eliminado</span>';
+    const delBtn = document.querySelector(`.msg[data-msg-id="${pk}"] .msg-delete-btn`);
+    if (delBtn) delBtn.remove();
+    const statusIcon = document.querySelector(`.msg[data-msg-id="${pk}"] .msg-status-icon`);
+    if (statusIcon) statusIcon.remove();
+  } else {
+    alert(data.error || 'No se pudo eliminar el mensaje');
+  }
 }
 
 // Auto-scroll
@@ -1014,7 +1078,7 @@ async function sendMedia() {
       if (msgs) {
         const div = document.createElement('div');
         div.className = 'msg-row out';
-        div.innerHTML = `<div class="msg-bubble">${renderContenido(data.mensaje)}</div><div class="msg-time">${escHtml(data.mensaje.timestamp)}</div>`;
+        div.innerHTML = `<div class="msg-bubble">${renderContenido(data.mensaje)}</div><div class="msg-time">${escHtml(data.mensaje.timestamp)}<button class="msg-delete-btn" onclick="borrarMensaje(${data.mensaje.id})" title="Borrar mensaje">×</button></div>`;
         msgs.appendChild(div);
         msgs.scrollTop = msgs.scrollHeight;
       }
@@ -1072,9 +1136,11 @@ function connectSSE() {
       const div = document.createElement('div');
       div.className = `msg ${msg.direccion}`;
       div.setAttribute('data-msg-id', msg.id);
+      const delBtn = (msg.direccion === 'out' && !msg.borrado)
+        ? `<button class="msg-delete-btn" onclick="borrarMensaje(${msg.id})" title="Borrar mensaje">×</button>` : '';
       div.innerHTML = `
         <div class="msg-bubble">${renderContenido(msg)}</div>
-        <div class="msg-time">${escHtml(msg.timestamp)}${msg.enviado_por ? ' · ' + escHtml(msg.enviado_por) : ''}</div>
+        <div class="msg-time">${escHtml(msg.timestamp)}${msg.enviado_por ? ' · ' + escHtml(msg.enviado_por) : ''}${delBtn}</div>
       `;
       area.appendChild(div);
       scrollBottom();

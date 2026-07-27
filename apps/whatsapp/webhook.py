@@ -64,15 +64,18 @@ def _extract_content(msg: dict, msg_type: str) -> str:
     if msg_type in ('conversation', 'text'):
         return msg.get('conversation', '') or msg.get('extendedTextMessage', {}).get('text', '')
     if msg_type == 'imageMessage':
-        return msg.get('imageMessage', {}).get('caption', '') or '[Imagen]'
+        return msg.get('imageMessage', {}).get('caption', '') or ''
     if msg_type == 'videoMessage':
-        return msg.get('videoMessage', {}).get('caption', '') or '[Video]'
+        return msg.get('videoMessage', {}).get('caption', '') or ''
     if msg_type == 'documentMessage':
         return msg.get('documentMessage', {}).get('fileName', '') or '[Documento]'
     if msg_type == 'audioMessage':
         return '[Audio]'
     if msg_type == 'stickerMessage':
-        return '[Sticker]'
+        return ''
+    if msg_type == 'contactMessage':
+        contact = msg.get('contactMessage', {})
+        return contact.get('displayName', '') or '[Contacto]'
     if msg_type == 'buttonsResponseMessage':
         return msg.get('buttonsResponseMessage', {}).get('selectedDisplayText', '')
     if msg_type == 'listResponseMessage':
@@ -82,6 +85,17 @@ def _extract_content(msg: dict, msg_type: str) -> str:
 
 def _extract_media_fields(msg: dict, msg_type: str) -> tuple:
     """Return (media_url, media_mime, media_filename) for media message types."""
+    if msg_type == 'contactMessage' and msg:
+        contact = msg.get('contactMessage', {})
+        vcard = contact.get('vcard', '')
+        phone = ''
+        for line in vcard.split('\n'):
+            line = line.strip()
+            if line.startswith('TEL'):
+                phone = line.split(':')[-1].strip()
+                break
+        return '', '', phone
+
     type_map = {
         'imageMessage': 'imageMessage',
         'videoMessage': 'videoMessage',
@@ -122,6 +136,7 @@ def _normalize_type(msg_type: str) -> str:
         'conversation': 'text', 'extendedTextMessage': 'text',
         'imageMessage': 'image', 'videoMessage': 'video',
         'audioMessage': 'audio', 'documentMessage': 'document',
+        'stickerMessage': 'sticker', 'contactMessage': 'contact',
     }
     return mapping.get(msg_type, 'text')
 

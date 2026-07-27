@@ -17,6 +17,7 @@ urlpatterns = [
     path('api/inbox/updates/', views.InboxUpdatesAPIView.as_view(), name='inbox_updates'),
     path('api/inbox/sse/', views.InboxSSEView.as_view(), name='inbox_sse'),
     path('api/mensajes/<int:pk>/marcar-leido/', views.MarcarLeidoView.as_view(), name='marcar_leido'),
+    path('api/mensajes/<int:pk>/borrar/', views.BorrarMensajeView.as_view(), name='borrar_mensaje'),
     path('api/conversacion/<int:pk>/abrir/', views.AbrirConversacionView.as_view(), name='abrir_conversacion'),
     path('api/mensajes/<int:pk>/', views.ConversacionMessagesAPIView.as_view(), name='mensajes_api'),
 
