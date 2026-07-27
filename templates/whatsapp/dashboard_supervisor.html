@@ -43,16 +43,16 @@
     font-size:9px; font-weight:700; letter-spacing:.04em;
     padding:2px 6px; border-radius:3px; margin-top:2px; display:inline-block;
   }
-  .status-turno { background:#064e3b; color:#6ee7b7; }
+  .status-turno { background:var(--success-bg); color:var(--success-text); }
   .status-off { background:var(--bg4); color:var(--text3); }
-  .status-inactive { background:#450a0a; color:#fca5a5; }
+  .status-inactive { background:var(--danger-bg); color:var(--danger-text); }
 
   .agent-stats { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
   .agent-stat { text-align:center; }
   .agent-stat .n { font-size:18px; font-weight:700; }
   .agent-stat .l { font-size:10px; color:var(--text3); }
-  .n-bot { color:#7ab3e0; }
-  .n-pend { color:#60a5fa; }
+  .n-bot { color:var(--info-text); }
+  .n-pend { color:var(--blue); }
   .n-open { color:var(--green); }
 
   /* Panel de conversaciones del agente */
@@ -79,9 +79,9 @@
   .estado-chip {
     font-size:10px; padding:2px 7px; border-radius:10px; font-weight:600; flex-shrink:0;
   }
-  .chip-bot { background:#0c1a2e; color:#7ab3e0; }
-  .chip-pendiente { background:#1e3a5f; color:#93c5fd; }
-  .chip-abierta { background:#0a2215; color:var(--green); }
+  .chip-bot { background:var(--info-bg); color:var(--info-text); }
+  .chip-pendiente { background:var(--info-bg2); color:var(--info-text2); }
+  .chip-abierta { background:var(--selected-bg); color:var(--green); }
 
   .conv-link {
     font-size:11px; padding:4px 10px; border-radius:var(--radius-sm);
@@ -93,14 +93,14 @@
   /* Sin asignar */
   .section { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:20px; }
   .section-h { padding:14px 20px; border-bottom:1px solid var(--border); font-weight:600; font-size:13px; display:flex; gap:10px; align-items:center; }
-  .badge-red { background:#450a0a; color:#fca5a5; font-size:11px; padding:2px 8px; border-radius:10px; font-weight:700; }
+  .badge-red { background:var(--danger-bg); color:var(--danger-text); font-size:11px; padding:2px 8px; border-radius:10px; font-weight:700; }
 
   .btn { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:var(--radius-sm); font-size:12px; font-weight:600; font-family:inherit; cursor:pointer; border:none; text-decoration:none; }
-  .btn-green { background:var(--green); color:#000; }
+  .btn-green { background:var(--green); color:var(--on-accent); }
   .btn-outline { background:transparent; border:1px solid var(--border); color:var(--text2); }
   .btn-outline:hover { background:var(--bg3); }
-  .btn-red { background:transparent; border:1px solid #7f1d1d; color:#fca5a5; }
-  .btn-red:hover { background:#450a0a; }
+  .btn-red { background:transparent; border:1px solid var(--danger-border); color:var(--danger-text); }
+  .btn-red:hover { background:var(--danger-bg); }
 
   select.inline-select {
     background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm);

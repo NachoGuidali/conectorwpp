@@ -4,12 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SPwap — Iniciar sesión</title>
+  <script>(function(){document.documentElement.setAttribute('data-theme',localStorage.getItem('theme')||'dark');})()</script>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg: #0f1117; --bg2: #161b26; --border: #2a3347;
       --text: #e8eaf0; --text2: #8b95a8;
       --green: #25d366; --radius: 10px;
+      --on-accent: #000;
+      --danger-bg: #450a0a; --danger-border: #7f1d1d; --danger-text: #fca5a5;
+    }
+    [data-theme="light"] {
+      --bg: #f8fafc; --bg2: #f1f5f9; --border: #c5cdd9;
+      --text: #0f172a; --text2: #374151;
+      --on-accent: #000;
+      --danger-bg: #fef2f2; --danger-border: #fecaca; --danger-text: #dc2626;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -34,7 +43,7 @@
       background: var(--green);
       border-radius: 14px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 24px; font-weight: 700; color: #000;
+      font-size: 24px; font-weight: 700; color: var(--on-accent);
       margin-bottom: 24px;
     }
     h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
@@ -42,7 +51,7 @@
     label { display: block; font-size: 13px; font-weight: 500; color: var(--text2); margin-bottom: 6px; }
     input {
       width: 100%;
-      background: #0f1117;
+      background: var(--bg);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 10px 14px;
@@ -57,7 +66,7 @@
     button {
       width: 100%;
       background: var(--green);
-      color: #000;
+      color: var(--on-accent);
       border: none;
       border-radius: var(--radius);
       padding: 12px;
@@ -68,9 +77,9 @@
     }
     button:hover { opacity: .9; }
     .error {
-      background: #450a0a;
-      color: #fca5a5;
-      border: 1px solid #7f1d1d;
+      background: var(--danger-bg);
+      color: var(--danger-text);
+      border: 1px solid var(--danger-border);
       border-radius: var(--radius);
       padding: 10px 14px;
       font-size: 13px;
@@ -98,5 +107,29 @@
       <button type="submit">Ingresar</button>
     </form>
   </div>
+<button onclick="toggleTheme()" id="theme-toggle-login"
+  style="position:fixed; top:16px; right:16px; background:none; border:none; cursor:pointer; color:var(--text2); padding:8px; border-radius:8px;">
+  <svg id="licon-sun" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" style="display:none">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+  </svg>
+  <svg id="licon-moon" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+  </svg>
+</button>
+<script>
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const next = isDark ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  _syncIcons();
+}
+function _syncIcons() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.getElementById('licon-sun').style.display = isDark ? 'none' : 'block';
+  document.getElementById('licon-moon').style.display = isDark ? 'block' : 'none';
+}
+document.addEventListener('DOMContentLoaded', _syncIcons);
+</script>
 </body>
 </html>

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}SPwap{% endblock %}</title>
+  <script>(function(){document.documentElement.setAttribute('data-theme',localStorage.getItem('theme')||'dark');})()</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
@@ -24,6 +25,54 @@
       --yellow: #f59e0b;
       --radius: 10px;
       --radius-sm: 6px;
+      /* Semantic tokens */
+      --on-accent: #000;
+      --msg-out-bg: #1a3326;
+      --danger-bg: #450a0a;
+      --danger-border: #7f1d1d;
+      --danger-text: #fca5a5;
+      --success-bg: #064e3b;
+      --success-text: #6ee7b7;
+      --success-border: #065f46;
+      --info-bg: #0c1a2e;
+      --info-text: #7ab3e0;
+      --info-bg2: #1e3a5f;
+      --info-text2: #93c5fd;
+      --purple-bg: #1e1b2e;
+      --purple-text: #a78bfa;
+      --warning-bg: #451a03;
+      --warning-text: #fdba74;
+      --warning-text2: #fbbf24;
+      --warning-border: #ca8a04;
+      --selected-bg: #0a2215;
+    }
+    [data-theme="light"] {
+      --bg: #f8fafc;
+      --bg2: #f1f5f9;
+      --bg3: #e2e8f0;
+      --bg4: #d4dae8;
+      --border: #c5cdd9;
+      --text: #0f172a;
+      --text2: #374151;
+      --text3: #6b7280;
+      --msg-out-bg: #d1fae5;
+      --danger-bg: #fef2f2;
+      --danger-border: #fecaca;
+      --danger-text: #dc2626;
+      --success-bg: #f0fdf4;
+      --success-text: #15803d;
+      --success-border: #86efac;
+      --info-bg: #eff6ff;
+      --info-text: #2563eb;
+      --info-bg2: #dbeafe;
+      --info-text2: #1d4ed8;
+      --purple-bg: #f5f3ff;
+      --purple-text: #7c3aed;
+      --warning-bg: #fffbeb;
+      --warning-text: #d97706;
+      --warning-text2: #d97706;
+      --warning-border: #f59e0b;
+      --selected-bg: #dcfce7;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -62,7 +111,7 @@
       border-radius: 12px;
       display: flex; align-items: center; justify-content: center;
       margin-bottom: 16px;
-      font-weight: 700; font-size: 18px; color: #000;
+      font-weight: 700; font-size: 18px; color: var(--on-accent);
     }
     .sidebar-item {
       width: 44px; height: 44px;
@@ -110,8 +159,8 @@
       font-size: 13px; font-weight: 500;
       animation: slideIn .2s ease;
     }
-    .alert-success { background: #064e3b; color: #6ee7b7; border: 1px solid #065f46; }
-    .alert-error { background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
+    .alert-success { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
+    .alert-error { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
     @keyframes slideIn { from { opacity:0; transform: translateX(16px); } to { opacity:1; transform: translateX(0); } }
 
     /* Scrollbar */
@@ -190,6 +239,15 @@
   {% endif %}
 
   <div class="sidebar-bottom">
+    <button id="theme-toggle" onclick="toggleTheme()" class="sidebar-item" title="Cambiar tema"
+            style="background:none; border:none; cursor:pointer; width:100%; padding:0;">
+      <svg id="icon-sun" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" style="display:none">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+      </svg>
+      <svg id="icon-moon" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+      </svg>
+    </button>
     <form method="post" action="{% url 'logout' %}" style="margin:0;">
       {% csrf_token %}
       <button type="submit" class="sidebar-item" title="Salir"
@@ -252,5 +310,22 @@
 {% endif %}
 
 {% block extra_js %}{% endblock %}
+<script>
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const next = isDark ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  _syncThemeIcons();
+}
+function _syncThemeIcons() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const sun = document.getElementById('icon-sun');
+  const moon = document.getElementById('icon-moon');
+  if (sun) sun.style.display = isDark ? 'none' : 'block';
+  if (moon) moon.style.display = isDark ? 'block' : 'none';
+}
+document.addEventListener('DOMContentLoaded', _syncThemeIcons);
+</script>
 </body>
 </html>

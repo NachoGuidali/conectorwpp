@@ -35,17 +35,17 @@
   .estado-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
   .estado-pending { background: var(--bg4); color: var(--text3); }
   .estado-sent { background: #0a2215; color: var(--green); }
-  .estado-failed { background: #450a0a; color: #fca5a5; }
+  .estado-failed { background: var(--danger-bg); color: var(--danger-text); }
 
   .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; font-family: inherit; cursor: pointer; text-decoration: none; border: none; }
   .btn-green { background: var(--green); color: #000; }
   .btn-green:hover { opacity: .88; }
-  .btn-send { background: #1d4ed8; color: #fff; }
+  .btn-send { background: var(--blue-dim); color: #fff; }
   .btn-send:hover { background: #1e40af; }
   .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text2); }
   .btn-outline:hover { background: var(--bg3); color: var(--text); }
-  .btn-red { background: transparent; border: 1px solid #7f1d1d; color: #fca5a5; }
-  .btn-red:hover { background: #450a0a; }
+  .btn-red { background: transparent; border: 1px solid var(--danger-border); color: var(--danger-text); }
+  .btn-red:hover { background: var(--danger-bg); }
   .btn-sm { padding: 5px 10px; font-size: 12px; }
 
   .filter-bar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
@@ -58,7 +58,7 @@
 
   .estado-difusion { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 5px 12px; border-radius: 20px; font-weight: 500; }
   .estado-difusion.draft { background: var(--bg4); color: var(--text2); }
-  .estado-difusion.sending { background: #0c1a2e; color: #7ab3e0; }
+  .estado-difusion.sending { background: var(--info-bg); color: var(--info-text); }
   .estado-difusion.completed { background: #0a2215; color: var(--green); }
 
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
@@ -94,7 +94,7 @@
     <form method="post" action="{% url 'difusiones:reanudar' difusion.pk %}" style="display:inline;"
           onsubmit="return confirm('¿Reanudar el envío? Se enviarán los {{ difusion.pendientes }} mensajes pendientes. Los ya enviados no se repetirán.');">
       {% csrf_token %}
-      <button type="submit" class="btn btn-outline" style="border-color: #ca8a04; color: #fbbf24;">
+      <button type="submit" class="btn btn-outline" style="border-color: var(--warning-border); color: var(--warning-text2);">
         <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         Reanudar ({{ difusion.pendientes }} pendientes)
       </button>

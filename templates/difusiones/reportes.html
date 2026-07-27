@@ -24,14 +24,14 @@
 
   .estado-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
   .estado-draft { background: var(--bg4); color: var(--text3); }
-  .estado-sending { background: #0c1a2e; color: #7ab3e0; }
-  .estado-completed { background: #0a2215; color: var(--green); }
+  .estado-sending { background: var(--info-bg); color: var(--info-text); }
+  .estado-completed { background: var(--selected-bg); color: var(--green); }
 
   .stats-inline { display: flex; gap: 12px; align-items: center; }
   .stat-pill { font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
   .stat-total { background: var(--bg4); color: var(--text2); }
-  .stat-sent { background: #0a2215; color: var(--green); }
-  .stat-failed { background: #450a0a; color: #fca5a5; }
+  .stat-sent { background: var(--selected-bg); color: var(--green); }
+  .stat-failed { background: var(--danger-bg); color: var(--danger-text); }
   .stat-pending { background: var(--bg3); color: var(--text3); }
 
   .progress-mini { height: 4px; background: var(--bg4); border-radius: 2px; width: 100px; overflow: hidden; margin-top: 4px; }
@@ -139,7 +139,7 @@
               <a href="{% url 'difusiones:exportar' d.pk %}?estado=sent" class="btn btn-outline">Enviados</a>
               {% endif %}
               {% if d.fallidos %}
-              <a href="{% url 'difusiones:exportar' d.pk %}?estado=failed" class="btn btn-outline" style="color:#fca5a5; border-color:#7f1d1d;">Fallidos</a>
+              <a href="{% url 'difusiones:exportar' d.pk %}?estado=failed" class="btn btn-outline" style="color:var(--danger-text); border-color:var(--danger-border);">Fallidos</a>
               {% endif %}
               {% endif %}
             </div>
