@@ -351,14 +351,16 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
         wb = Workbook()
         ws = wb.active
         ws.title = 'Conversaciones'
-        headers = ['Nombre', 'Teléfono', 'Agente', 'Estado', 'Último mensaje', 'Creado']
+        headers = ['Nombre', 'Teléfono', 'Agente', 'Email agente', 'Estado', 'Último mensaje', 'Creado']
         ws.append(headers)
 
         estado_labels = dict(Conversacion.ESTADO_CHOICES)
         for conv in qs:
             agente_nombre = ''
+            agente_email = ''
             if conv.agente:
                 agente_nombre = f"{conv.agente.first_name} {conv.agente.last_name}".strip() or conv.agente.username
+                agente_email = conv.agente.email or ''
             nombre = ''
             if conv.contacto:
                 nombre = conv.contacto.nombre
@@ -367,6 +369,7 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
                 nombre,
                 conv.telefono,
                 agente_nombre,
+                agente_email,
                 estado_labels.get(conv.estado, conv.estado),
                 conv.ultimo_mensaje_at.strftime('%d/%m/%Y %H:%M') if conv.ultimo_mensaje_at else '',
                 conv.created_at.strftime('%d/%m/%Y %H:%M') if conv.created_at else '',
