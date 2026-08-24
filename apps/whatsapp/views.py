@@ -329,11 +329,24 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
         from openpyxl import Workbook
         from openpyxl.utils import get_column_letter
 
+        from django.utils.dateparse import parse_date
+        fecha_desde = request.GET.get('desde', '').strip()
+        fecha_hasta = request.GET.get('hasta', '').strip()
+
         qs = (
             Conversacion.objects.all()
             .select_related('agente', 'contacto')
             .order_by('-ultimo_mensaje_at')
         )
+
+        if fecha_desde:
+            d = parse_date(fecha_desde)
+            if d:
+                qs = qs.filter(created_at__date__gte=d)
+        if fecha_hasta:
+            d = parse_date(fecha_hasta)
+            if d:
+                qs = qs.filter(created_at__date__lte=d)
 
         wb = Workbook()
         ws = wb.active
@@ -362,10 +375,15 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
         for i in range(1, len(headers) + 1):
             ws.column_dimensions[get_column_letter(i)].width = 24
 
+        filename = 'conversaciones'
+        if fecha_desde or fecha_hasta:
+            filename += f'_{fecha_desde or "inicio"}_{fecha_hasta or "hoy"}'
+        filename += '.xlsx'
+
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        response['Content-Disposition'] = 'attachment; filename="conversaciones.xlsx"'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
         wb.save(response)
         return response
 
