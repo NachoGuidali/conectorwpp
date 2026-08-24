@@ -320,6 +320,56 @@ class DashboardSupervisorView(LoginRequiredMixin, View):
         return redirect(f"{request.path}?agente={desde_pk}")
 
 
+class ConversacionesExportarView(LoginRequiredMixin, View):
+    def get(self, request):
+        if not request.user.can_see_all:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden()
+
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+
+        qs = (
+            Conversacion.objects.all()
+            .select_related('agente', 'contacto')
+            .order_by('-ultimo_mensaje_at')
+        )
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Conversaciones'
+        headers = ['Nombre', 'Teléfono', 'Agente', 'Estado', 'Último mensaje', 'Creado']
+        ws.append(headers)
+
+        estado_labels = dict(Conversacion.ESTADO_CHOICES)
+        for conv in qs:
+            agente_nombre = ''
+            if conv.agente:
+                agente_nombre = f"{conv.agente.first_name} {conv.agente.last_name}".strip() or conv.agente.username
+            nombre = ''
+            if conv.contacto:
+                nombre = conv.contacto.nombre
+            nombre = nombre or conv.nombre_contacto or conv.telefono
+            ws.append([
+                nombre,
+                conv.telefono,
+                agente_nombre,
+                estado_labels.get(conv.estado, conv.estado),
+                conv.ultimo_mensaje_at.strftime('%d/%m/%Y %H:%M') if conv.ultimo_mensaje_at else '',
+                conv.created_at.strftime('%d/%m/%Y %H:%M') if conv.created_at else '',
+            ])
+
+        for i in range(1, len(headers) + 1):
+            ws.column_dimensions[get_column_letter(i)].width = 24
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="conversaciones.xlsx"'
+        wb.save(response)
+        return response
+
+
 class SinContactoExportarView(LoginRequiredMixin, View):
     def get(self, request):
         if not request.user.can_see_all:

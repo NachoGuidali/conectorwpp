@@ -12,6 +12,7 @@ urlpatterns = [
     path('dashboard/', views.DashboardAgenteView.as_view(), name='dashboard'),
     path('dashboard/supervisor/', views.DashboardSupervisorView.as_view(), name='dashboard_supervisor'),
     path('reportes/conversaciones/', views.ReporteConversacionesView.as_view(), name='reporte_conversaciones'),
+    path('reportes/conversaciones/historico/', views.ConversacionesExportarView.as_view(), name='conversaciones_exportar'),
     path('reportes/sin-contacto/exportar/', views.SinContactoExportarView.as_view(), name='sin_contacto_exportar'),
     path('reportes/conversaciones/exportar/', views.ReporteConversacionesExportarView.as_view(), name='reporte_conversaciones_exportar'),
     path('api/inbox/updates/', views.InboxUpdatesAPIView.as_view(), name='inbox_updates'),
