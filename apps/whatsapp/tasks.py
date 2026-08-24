@@ -178,6 +178,7 @@ def _forward_to_n8n(conv, message_data: dict):
             if hasattr(message_data.get('timestamp', ''), 'isoformat')
             else str(message_data.get('timestamp', '')),
         'vendedor': conv.agente.email if conv.agente else '',
+        'origen_conversacion': conv.origen_conversacion,
         # Para que n8n pueda responder de vuelta al CRM:
         'crm_reply_url': f'{public_url}/whatsapp/api/enviar/',
         'crm_api_key': crm_api_key,

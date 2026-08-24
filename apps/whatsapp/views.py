@@ -351,7 +351,7 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
         wb = Workbook()
         ws = wb.active
         ws.title = 'Conversaciones'
-        headers = ['Nombre', 'Teléfono', 'Agente', 'Email agente', 'Estado', 'Último mensaje', 'Creado']
+        headers = ['Nombre', 'Teléfono', 'Agente', 'Email agente', 'Estado', 'Origen', 'Último mensaje', 'Creado']
         ws.append(headers)
 
         estado_labels = dict(Conversacion.ESTADO_CHOICES)
@@ -371,6 +371,7 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
                 agente_nombre,
                 agente_email,
                 estado_labels.get(conv.estado, conv.estado),
+                dict(Conversacion.ORIGEN_CHOICES).get(conv.origen_conversacion, conv.origen_conversacion),
                 conv.ultimo_mensaje_at.strftime('%d/%m/%Y %H:%M') if conv.ultimo_mensaje_at else '',
                 conv.created_at.strftime('%d/%m/%Y %H:%M') if conv.created_at else '',
             ])
@@ -693,6 +694,7 @@ class NuevaConversacionView(LoginRequiredMixin, View):
                 'nombre_contacto': nombre or telefono,
                 'agente': request.user,
                 'contacto': contacto,
+                'origen_conversacion': Conversacion.ORIGEN_SALIENTE,
             },
         )
         if not conv.contacto and contacto:

@@ -228,6 +228,11 @@
       {% elif conv.estado == 'abierta' %}
       <span class="estado-chip chip-abierta">💬 Abierta</span>
       {% endif %}
+      {% if conv.origen_conversacion == 'saliente' %}
+      <span class="estado-chip" style="background:var(--info-bg2); color:var(--info-text2);">↗ Saliente</span>
+      {% else %}
+      <span class="estado-chip" style="background:var(--bg4); color:var(--text3);">↙ Entrante</span>
+      {% endif %}
       {% if conv.ultimo_mensaje_at %}
       <span class="conv-time">{{ conv.ultimo_mensaje_at|date:"d/m H:i" }}</span>
       {% endif %}

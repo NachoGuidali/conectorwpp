@@ -48,6 +48,13 @@ class Conversacion(models.Model):
         (ESTADO_CERRADA, 'Cerrada'),
     ]
 
+    ORIGEN_ENTRANTE = 'entrante'
+    ORIGEN_SALIENTE = 'saliente'
+    ORIGEN_CHOICES = [
+        (ORIGEN_ENTRANTE, 'Entrante'),
+        (ORIGEN_SALIENTE, 'Saliente'),
+    ]
+
     telefono = models.CharField(max_length=20, unique=True, db_index=True)
     nombre_contacto = models.CharField(max_length=200, blank=True)
     contacto = models.ForeignKey(
@@ -73,6 +80,10 @@ class Conversacion(models.Model):
     bot_crm_activo = models.BooleanField(default=True)
     bot_n8n_activo = models.BooleanField(default=True)
     archivada = models.BooleanField(default=False, db_index=True)
+    origen_conversacion = models.CharField(
+        max_length=10, choices=ORIGEN_CHOICES,
+        default=ORIGEN_ENTRANTE,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

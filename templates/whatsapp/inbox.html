@@ -506,6 +506,11 @@
         <div class="chat-contact-name">{{ selected_conv.get_display_name }}</div>
         <div class="chat-contact-phone">
           {{ selected_conv.telefono }}
+          {% if selected_conv.origen_conversacion == 'saliente' %}
+          <span style="background:var(--info-bg2); color:var(--info-text2); font-size:9px; font-weight:700; padding:2px 6px; border-radius:3px; margin-left:6px; letter-spacing:.04em;">SALIENTE</span>
+          {% else %}
+          <span style="background:var(--selected-bg); color:var(--green); font-size:9px; font-weight:700; padding:2px 6px; border-radius:3px; margin-left:6px; letter-spacing:.04em;">ENTRANTE</span>
+          {% endif %}
           {% if selected_conv.ventana_activa %}
           <span style="color: var(--green); margin-left: 6px;">● Ventana activa</span>
           {% endif %}
