@@ -116,6 +116,22 @@
       <div class="empty-row">Sin conversaciones en este período.</div>
       {% endif %}
     </div>
+
+    <div class="panel">
+      <div class="panel-h">Por origen</div>
+      {% if por_origen %}
+      <table class="simple">
+        <thead><tr><th>Origen</th><th>Cantidad</th></tr></thead>
+        <tbody>
+          {% for row in por_origen %}
+          <tr><td>{{ row.origen_label }}</td><td>{{ row.total }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-row">Sin conversaciones en este período.</div>
+      {% endif %}
+    </div>
   </div>
 
 </div>

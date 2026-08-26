@@ -332,6 +332,7 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
         from django.utils.dateparse import parse_date
         fecha_desde = request.GET.get('desde', '').strip()
         fecha_hasta = request.GET.get('hasta', '').strip()
+        origen = request.GET.get('origen', '').strip()
 
         qs = (
             Conversacion.objects.all()
@@ -347,6 +348,8 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
             d = parse_date(fecha_hasta)
             if d:
                 qs = qs.filter(created_at__date__lte=d)
+        if origen in ('entrante', 'saliente'):
+            qs = qs.filter(origen_conversacion=origen)
 
         wb = Workbook()
         ws = wb.active
@@ -473,9 +476,15 @@ class ReporteConversacionesView(LoginRequiredMixin, View):
         por_estado = list(
             qs.values('estado').annotate(total=Count('pk')).order_by('-total')
         )
+        por_origen = list(
+            qs.values('origen_conversacion').annotate(total=Count('pk')).order_by('origen_conversacion')
+        )
         estado_labels = dict(Conversacion.ESTADO_CHOICES)
+        origen_labels = dict(Conversacion.ORIGEN_CHOICES)
         for row in por_estado:
             row['estado_label'] = estado_labels.get(row['estado'], row['estado'])
+        for row in por_origen:
+            row['origen_label'] = origen_labels.get(row['origen_conversacion'], row['origen_conversacion'])
         for row in por_agente:
             nombre = f"{row['agente__first_name']} {row['agente__last_name']}".strip()
             row['agente_nombre'] = nombre or row['agente__username'] or 'Sin agente'
@@ -485,6 +494,7 @@ class ReporteConversacionesView(LoginRequiredMixin, View):
             'por_dia': por_dia,
             'por_agente': por_agente,
             'por_estado': por_estado,
+            'por_origen': por_origen,
         }
 
     def get(self, request):
@@ -671,7 +681,6 @@ class NuevaConversacionView(LoginRequiredMixin, View):
         if not telefono.startswith('+'):
             telefono = '+' + telefono
 
-        # Try to find linked contact
         contacto = None
         try:
             from apps.contacts.models import Contacto
@@ -680,11 +689,14 @@ class NuevaConversacionView(LoginRequiredMixin, View):
                 telefono = contacto.telefono
                 nombre = contacto.nombre
             else:
-                try:
-                    contacto = Contacto.objects.get(telefono=telefono)
-                    nombre = nombre or contacto.nombre
-                except Contacto.DoesNotExist:
-                    pass
+                contacto, _ = Contacto.objects.get_or_create(
+                    telefono=telefono,
+                    defaults={'nombre': nombre or telefono},
+                )
+                if contacto.nombre == contacto.telefono and nombre:
+                    contacto.nombre = nombre
+                    contacto.save(update_fields=['nombre'])
+                nombre = nombre or contacto.nombre
         except Exception:
             pass
 
