@@ -1076,7 +1076,10 @@ class APIEnviarMensajeView(View):
             else:
                 result = send_text_message(phone, message)
                 tipo = Mensaje.TIPO_TEXTO
-            conv, _ = Conversacion.objects.get_or_create(telefono=phone, defaults={'nombre_contacto': phone})
+            conv, _ = Conversacion.objects.get_or_create(
+                telefono=phone,
+                defaults={'nombre_contacto': phone, 'origen_conversacion': Conversacion.ORIGEN_SALIENTE},
+            )
             msg = Mensaje.objects.create(
                 conversacion=conv, direccion=Mensaje.DIR_SALIENTE, tipo=tipo,
                 contenido=message, media_url=media_url,
