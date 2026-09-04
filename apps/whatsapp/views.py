@@ -717,9 +717,15 @@ class NuevaConversacionView(LoginRequiredMixin, View):
                 'origen_conversacion': Conversacion.ORIGEN_SALIENTE,
             },
         )
+        update_fields = []
         if not conv.contacto and contacto:
             conv.contacto = contacto
-            conv.save(update_fields=['contacto'])
+            update_fields.append('contacto')
+        if conv.archivada:
+            conv.archivada = False
+            update_fields.append('archivada')
+        if update_fields:
+            conv.save(update_fields=update_fields)
 
         from django.urls import reverse
         return redirect(f"{reverse('whatsapp:inbox')}?conv={conv.pk}")
