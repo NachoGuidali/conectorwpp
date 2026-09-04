@@ -435,6 +435,7 @@
 
       <form method="get" style="display:contents;">
         {% if selected_conv %}<input type="hidden" name="conv" value="{{ selected_conv.pk }}">{% endif %}
+        {% if archivadas %}<input type="hidden" name="archivadas" value="1">{% endif %}
         <input type="text" name="q" value="{{ q }}" placeholder="Buscar..." class="search-input" onchange="this.form.submit()">
         <div class="filter-row">
           <a href="?{% if q %}q={{ q }}&{% endif %}no_leidos=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}"

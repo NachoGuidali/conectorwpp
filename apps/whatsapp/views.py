@@ -104,6 +104,8 @@ class InboxView(LoginRequiredMixin, View):
             qs = Conversacion.objects.filter(archivada=True)
             if not request.user.can_see_all:
                 qs = qs.filter(agente=request.user)
+            if q:
+                qs = qs.filter(Q(nombre_contacto__icontains=q) | Q(telefono__icontains=q))
             qs = qs.order_by('-ultimo_mensaje_at')
 
         conversaciones = list(qs[:100])
