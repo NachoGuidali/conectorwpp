@@ -350,11 +350,16 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
                 qs = qs.filter(created_at__date__lte=d)
         if origen in ('entrante', 'saliente'):
             qs = qs.filter(origen_conversacion=origen)
+        archivada_filter = request.GET.get('archivada', '').strip()
+        if archivada_filter == 'si':
+            qs = qs.filter(archivada=True)
+        elif archivada_filter == 'no':
+            qs = qs.filter(archivada=False)
 
         wb = Workbook()
         ws = wb.active
         ws.title = 'Conversaciones'
-        headers = ['Nombre', 'Teléfono', 'Agente', 'Email agente', 'Estado', 'Origen', 'Último mensaje', 'Creado']
+        headers = ['Nombre', 'Teléfono', 'Agente', 'Email agente', 'Estado', 'Archivada', 'Origen', 'Último mensaje', 'Creado']
         ws.append(headers)
 
         estado_labels = dict(Conversacion.ESTADO_CHOICES)
@@ -374,6 +379,7 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
                 agente_nombre,
                 agente_email,
                 estado_labels.get(conv.estado, conv.estado),
+                'Sí' if conv.archivada else 'No',
                 dict(Conversacion.ORIGEN_CHOICES).get(conv.origen_conversacion, conv.origen_conversacion),
                 conv.ultimo_mensaje_at.strftime('%d/%m/%Y %H:%M') if conv.ultimo_mensaje_at else '',
                 conv.created_at.strftime('%d/%m/%Y %H:%M') if conv.created_at else '',
