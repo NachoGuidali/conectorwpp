@@ -677,6 +677,39 @@ class InboxSSEView(LoginRequiredMixin, View):
         return response
 
 
+class IrAConversacionView(LoginRequiredMixin, View):
+    """
+    Deep link desde CRM externo. Acepta el teléfono en la URL (con o sin +),
+    busca o crea la conversación y redirige al inbox.
+    Ejemplo: /whatsapp/ir/5491133558877/
+    """
+    def get(self, request, telefono):
+        from django.urls import reverse
+        # Normalizar: asegurar que tenga +
+        if not telefono.startswith('+'):
+            telefono = '+' + telefono
+
+        conv = Conversacion.objects.filter(telefono=telefono).first()
+
+        if conv:
+            if conv.archivada:
+                conv.archivada = False
+                conv.save(update_fields=['archivada'])
+        else:
+            # Crear conversación nueva y vincular contacto si existe
+            from apps.contacts.models import Contacto
+            contacto = Contacto.objects.filter(telefono=telefono).first()
+            conv = Conversacion.objects.create(
+                telefono=telefono,
+                nombre_contacto=contacto.nombre if contacto else telefono,
+                contacto=contacto,
+                agente=request.user if not request.user.can_see_all else None,
+                origen_conversacion=Conversacion.ORIGEN_SALIENTE,
+            )
+
+        return redirect(f"{reverse('whatsapp:inbox')}?conv={conv.pk}")
+
+
 class NuevaConversacionView(LoginRequiredMixin, View):
     def post(self, request):
         telefono = request.POST.get('telefono', '').strip()

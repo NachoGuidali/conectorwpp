@@ -22,6 +22,9 @@ urlpatterns = [
     path('api/conversacion/<int:pk>/abrir/', views.AbrirConversacionView.as_view(), name='abrir_conversacion'),
     path('api/mensajes/<int:pk>/', views.ConversacionMessagesAPIView.as_view(), name='mensajes_api'),
 
+    # Deep link desde CRM externo: abre (o crea) conversación por teléfono
+    path('ir/<str:telefono>/', views.IrAConversacionView.as_view(), name='ir_a_conversacion'),
+
     # Conversación
     path('conversacion/nueva/', views.NuevaConversacionView.as_view(), name='nueva_conversacion'),
     path('conversacion/<int:pk>/asignar/', views.AsignarAgenteView.as_view(), name='asignar_agente'),
