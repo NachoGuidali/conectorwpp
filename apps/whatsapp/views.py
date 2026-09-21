@@ -357,6 +357,11 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
             qs = qs.filter(archivada=True)
         elif archivada_filter == 'no':
             qs = qs.filter(archivada=False)
+        agente_filter = request.GET.get('agente', '').strip()
+        if agente_filter == 'sin_agente':
+            qs = qs.filter(agente__isnull=True)
+        elif agente_filter.isdigit():
+            qs = qs.filter(agente_id=int(agente_filter))
 
         wb = Workbook()
         ws = wb.active
