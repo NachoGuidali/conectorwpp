@@ -189,6 +189,20 @@
             <div class="l">Abiertos</div>
           </div>
         </div>
+        <div class="agent-stats" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border);">
+          <div class="agent-stat">
+            <div class="n" style="color:var(--text2);">{{ ag.total }}</div>
+            <div class="l">Activas</div>
+          </div>
+          <div class="agent-stat">
+            <div class="n" style="color:var(--text3);">{{ ag.archivadas }}</div>
+            <div class="l">Archivadas</div>
+          </div>
+          <div class="agent-stat">
+            <div class="n" style="color:var(--text2);">{{ ag.total_historial }}</div>
+            <div class="l">Total</div>
+          </div>
+        </div>
       </a>
       <form method="post" class="agent-asig">
         {% csrf_token %}

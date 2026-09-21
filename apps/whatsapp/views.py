@@ -252,6 +252,8 @@ class DashboardSupervisorView(LoginRequiredMixin, View):
                 bot=Count('conversaciones', filter=Qm(conversaciones__archivada=False, conversaciones__bot_n8n_activo=True)),
                 pendiente=Count('conversaciones', filter=Qm(conversaciones__archivada=False, conversaciones__estado='pendiente')),
                 abierta=Count('conversaciones', filter=Qm(conversaciones__archivada=False, conversaciones__estado='abierta', conversaciones__bot_n8n_activo=False)),
+                archivadas=Count('conversaciones', filter=Qm(conversaciones__archivada=True)),
+                total_historial=Count('conversaciones'),
             )
             .order_by('-en_turno', 'username')
         )
