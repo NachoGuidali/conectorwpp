@@ -130,11 +130,13 @@ def send_difusion_task(self, difusion_id: int):
                 # Registrar en inbox
                 try:
                     from apps.whatsapp.models import Conversacion, Mensaje
+                    from apps.contacts.asignacion import asegurar_agente
                     conv, created = Conversacion.objects.get_or_create(
                         telefono=dc.telefono,
                         defaults={
                             'nombre_contacto': dc.nombre or dc.telefono,
                             'contacto': dc.contacto,
+                            'origen_conversacion': Conversacion.ORIGEN_SALIENTE,
                         },
                     )
                     if not created:
@@ -146,6 +148,11 @@ def send_difusion_task(self, difusion_id: int):
                         Conversacion.objects.filter(pk=conv.pk).update(**update_fields)
                     else:
                         Conversacion.objects.filter(pk=conv.pk).update(ultimo_mensaje_at=now)
+                    if not conv.contacto_id and dc.contacto_id:
+                        conv.contacto = dc.contacto
+
+                    # Dueño: el del contacto; si no tiene, quien creó la difusión (si es agente); si no, por carga
+                    asegurar_agente(conv=conv, contacto=conv.contacto, iniciador=difusion.creado_por)
 
                     Mensaje.objects.create(
                         conversacion=conv,

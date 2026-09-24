@@ -135,6 +135,10 @@ POST /whatsapp/api/enviar/
 }
 ```
 
+> Si el número no tenía conversación, se crea (con su contacto) y queda asignada al
+> dueño del contacto o, si no tiene, al agente con menos carga. Nunca queda sin agente.
+> Si la conversación estaba archivada, sigue archivada.
+
 ---
 
 ### Enviar imagen
@@ -244,6 +248,7 @@ POST /whatsapp/api/contacto/
 | `nombre` | ❌ | Nombre completo. También acepta `nombre_completo` |
 | `email` | ❌ | Email del contacto |
 | `notas` | ❌ | Notas visibles en la ficha del contacto |
+| `etapa` | ❌ | Etapa del pipeline a la que mover el contacto: nombre (sin distinguir mayúsculas) o id. Ej: `"Interesado"` |
 | `campos` | ❌ | Objeto con campos extra (clave → valor). Se crean automáticamente si no existen |
 
 **Respuesta exitosa:**
@@ -252,9 +257,16 @@ POST /whatsapp/api/contacto/
   "ok": true,
   "contacto_id": 42,
   "created": true,
-  "campos_guardados": ["localidad", "origen", "obra_social", "recibo_sueldo"]
+  "campos_guardados": ["localidad", "origen", "obra_social", "recibo_sueldo"],
+  "agente_id": 7,
+  "agente_username": "ana",
+  "agente_nombre": "Ana Gómez",
+  "etapa": "Interesado"
 }
 ```
+
+`agente_*` se informa solo si hay una conversación activa (no archivada). Si la `etapa`
+enviada no existe, el contacto se guarda igual y la respuesta incluye `"etapa_error"`.
 
 `created: true` → contacto nuevo. `created: false` → contacto existente actualizado.
 
@@ -262,7 +274,35 @@ POST /whatsapp/api/contacto/
 - Si el contacto ya existe (mismo teléfono), se actualizan los campos provistos
 - Los `campos` extras son visibles en la ficha del contacto dentro de SPwap
 - La conversación de WhatsApp se vincula automáticamente al contacto si no lo estaba
+- El contacto siempre queda con agente: el de su conversación o, si no tiene, el de menor carga
 - No es necesario llamar este endpoint antes de enviar mensajes — es complementario
+
+---
+
+## Archivar / desarchivar
+
+Archiva la conversación **y el contacto** (pasa a la columna *Archivado* del pipeline).
+
+```
+POST /whatsapp/api/archivar/
+```
+
+```json
+{
+  "phone": "+5491122334455",
+  "motivo": "No responde",
+  "comentario": "Sin respuesta después de 3 recordatorios"
+}
+```
+
+| Campo | Requerido | Descripción |
+|---|---|---|
+| `phone` o `conversation_id` | ✅ | Conversación a archivar |
+| `archivar` | ❌ | `false` para desarchivar (default `true`) |
+| `motivo` | ❌ | Nombre o id de un motivo de archivo (se configuran en *Pipeline → Etapas*). Si no existe, se archiva igual y la respuesta trae `"motivo_error"` |
+| `comentario` | ❌ | Texto libre. Default: "Archivado desde n8n" |
+
+Si el cliente vuelve a escribir, la conversación y el contacto se desarchivan solos.
 
 ---
 

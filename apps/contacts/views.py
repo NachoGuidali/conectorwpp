@@ -18,7 +18,9 @@ from .filtros import (
     apply_filters, parse_filtros_from_post,
 )
 from .importar import auto_detect_mapping, detect_tipo, import_from_rows, parse_file
-from .models import CampoPersonalizado, Contacto, ValorCampo
+from .asignacion import asegurar_agente, asignar_agente, vincular_conversacion
+from .models import CampoPersonalizado, Contacto, Etapa, MotivoArchivo, ValorCampo
+from .pipeline import puede_ver_contacto
 
 logger = logging.getLogger('apps.whatsapp')
 
@@ -29,6 +31,28 @@ def _grupos_existentes():
     g1 = set(CampoPersonalizado.objects.values_list('grupo', flat=True).exclude(grupo=''))
     g2 = set(Contacto.objects.values_list('grupo', flat=True).exclude(grupo=''))
     return sorted(g1 | g2)
+
+
+def _agentes_activos():
+    from apps.users.models import User
+    return User.objects.filter(is_active=True, rol=User.ROL_AGENTE).order_by('first_name', 'username')
+
+
+def _agentes_para(contacto):
+    """Agentes activos, más el dueño actual si es un supervisor activo (para que figure en el selector)."""
+    agentes = list(_agentes_activos())
+    if contacto.agente_id and contacto.agente.is_active and contacto.agente not in agentes:
+        agentes.insert(0, contacto.agente)
+    return agentes
+
+
+def _agente_elegido(request):
+    """Agente elegido en un formulario por un supervisor; None = repartir automáticamente."""
+    agente_id = request.POST.get('agente_id', '').strip()
+    if not request.user.can_see_all or not agente_id.isdigit():
+        return None
+    from apps.users.models import User
+    return User.objects.filter(pk=agente_id, is_active=True).first()
 
 
 def _campos_para_grupo(grupo=''):
@@ -86,17 +110,17 @@ class ContactoExportarView(LoginRequiredMixin, View):
         ws = wb.active
         ws.title = 'Contactos'
 
-        headers = ['Nombre', 'Teléfono', 'Email', 'Grupo', 'Notas', 'Agente asignado', 'Fecha de creación'] + [c.etiqueta for c in campos]
+        headers = ['Nombre', 'Teléfono', 'Email', 'Grupo', 'Notas', 'Agente asignado', 'Etapa', 'Fecha de creación'] + [c.etiqueta for c in campos]
         ws.append(headers)
 
-        for c in qs.prefetch_related('valores', 'conversaciones__agente'):
+        for c in qs.select_related('agente', 'etapa').prefetch_related('valores'):
             val_map = {v.campo_id: v.valor for v in c.valores.all()}
-            conv = c.conversaciones.first()
             agente = ''
-            if conv and conv.agente:
-                agente = f"{conv.agente.first_name} {conv.agente.last_name}".strip() or conv.agente.username
+            if c.agente:
+                agente = f"{c.agente.first_name} {c.agente.last_name}".strip() or c.agente.username
             ws.append([
                 c.nombre, c.telefono, c.email, c.grupo, c.notas, agente,
+                c.etapa.nombre if c.etapa else '',
                 c.created_at.strftime('%d/%m/%Y %H:%M') if c.created_at else '',
             ] + [val_map.get(campo.pk, '') for campo in campos])
 
@@ -114,7 +138,7 @@ class ContactoExportarView(LoginRequiredMixin, View):
 class ContactoDetailView(LoginRequiredMixin, View):
     def get(self, request, pk):
         from apps.whatsapp.models import Mensaje as MensajeModel
-        contacto = get_object_or_404(Contacto, pk=pk)
+        contacto = get_object_or_404(Contacto.objects.select_related('agente', 'etapa', 'archivado_motivo', 'archivado_por'), pk=pk)
         campos_con_valores = contacto.get_campos_con_valores()
         conversacion = None
         try:
@@ -146,6 +170,11 @@ class ContactoDetailView(LoginRequiredMixin, View):
             'campos_con_valores': campos_con_valores,
             'conversacion': conversacion,
             'archivos': archivos,
+            'etapas': Etapa.objects.all(),
+            'puede_editar_pipeline': puede_ver_contacto(request.user, contacto),
+            'agentes': _agentes_para(contacto) if request.user.can_see_all else None,
+            'historial': contacto.historial.select_related('usuario')[:30],
+            'motivos': MotivoArchivo.objects.filter(activo=True),
         })
 
 
@@ -162,6 +191,7 @@ class ContactoCreateView(LoginRequiredMixin, View):
             'prefill_tel': request.GET.get('telefono', ''),
             'prefill_nombre': request.GET.get('nombre', ''),
             'prefill_grupo': grupo,
+            'agentes': _agentes_activos() if request.user.can_see_all else None,
         })
 
     def post(self, request):
@@ -191,7 +221,15 @@ class ContactoCreateView(LoginRequiredMixin, View):
             if valor:
                 ValorCampo.objects.create(contacto=contacto, campo=campo, valor=valor)
 
-        _auto_link_conversacion(telefono, contacto, nombre)
+        # Dueño: si ya había conversación con ese número, su agente; si no, el agente que
+        # lo crea, el elegido por el supervisor, o reparto por carga.
+        conv = vincular_conversacion(telefono, contacto, nombre)
+        if conv is None:
+            elegido = _agente_elegido(request)
+            if elegido:
+                asignar_agente(elegido, contacto=contacto, usuario=request.user)
+            else:
+                asegurar_agente(contacto=contacto, iniciador=request.user)
 
         messages.success(request, f'Contacto {nombre} creado.')
         return redirect('contacts:detail', pk=contacto.pk)
@@ -440,6 +478,7 @@ class ImportarContactosView(LoginRequiredMixin, View):
                 ('ignorar', 'Ignorar'),
             ],
             'tipos': TIPOS_CAMPO,
+            'agentes': _agentes_activos() if request.user.can_see_all else None,
         })
 
     def _handle_confirm(self, request):
@@ -478,6 +517,7 @@ class ImportarContactosView(LoginRequiredMixin, View):
         created, updated, skipped, errors = import_from_rows(
             headers_full, rows_full, col_roles, col_tipos, update_existing,
             agregar_prefijo_ar=agregar_prefijo_ar,
+            asignador=_asignador_importacion(request),
         )
 
         msg = f'Importación completa: {created} creados, {updated} actualizados, {skipped} omitidos.'
@@ -487,6 +527,27 @@ class ImportarContactosView(LoginRequiredMixin, View):
                 messages.warning(request, e)
         messages.success(request, msg)
         return redirect('contacts:list')
+
+
+def _asignador_importacion(request):
+    """
+    Dueño de los contactos importados. Los que ya tienen dueño (o conversación
+    con agente) lo conservan. El resto: el agente que importa; si importa un
+    supervisor, el agente elegido o reparto por carga.
+    """
+    from .asignacion import Repartidor, es_agente_valido
+    elegido = _agente_elegido(request)
+    repartidor = Repartidor() if elegido is None else None
+
+    def asignar(contacto):
+        conv = vincular_conversacion(contacto.telefono, contacto, contacto.nombre)
+        if conv is not None and conv.contacto_id == contacto.pk:
+            return
+        if elegido and not (contacto.agente_id and es_agente_valido(contacto.agente)):
+            asignar_agente(elegido, contacto=contacto, usuario=request.user)
+        else:
+            asegurar_agente(contacto=contacto, iniciador=request.user, repartidor=repartidor)
+    return asignar
 
 
 # ──────────────────────────────────────────────
@@ -603,15 +664,3 @@ class GrupoEliminarView(LoginRequiredMixin, View):
         return redirect('contacts:grupos')
 
 
-# ──────────────────────────────────────────────
-# Helper
-# ──────────────────────────────────────────────
-
-def _auto_link_conversacion(telefono, contacto, nombre):
-    try:
-        from apps.whatsapp.models import Conversacion
-        Conversacion.objects.filter(
-            telefono=telefono, contacto__isnull=True
-        ).update(contacto=contacto, nombre_contacto=nombre)
-    except Exception:
-        pass

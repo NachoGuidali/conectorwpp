@@ -19,5 +19,10 @@ def _setup_periodic_tasks(sender, **kwargs):
             name='expire_24h_windows',
             defaults={'task': 'apps.whatsapp.tasks.expire_24h_windows', 'interval': schedule_1h, 'enabled': True},
         )
+        schedule_10m, _ = IntervalSchedule.objects.get_or_create(every=10, period=IntervalSchedule.MINUTES)
+        PeriodicTask.objects.get_or_create(
+            name='asignar_conversaciones_sin_agente',
+            defaults={'task': 'apps.whatsapp.tasks.asignar_conversaciones_sin_agente', 'interval': schedule_10m, 'enabled': True},
+        )
     except Exception:
         pass

@@ -1,0 +1,37 @@
+<div class="kcard{% if c.archivado %} kcard-archivada{% endif %}" draggable="true" data-id="{{ c.pk }}"
+     data-url="{% url 'contacts:cambiar_etapa' c.pk %}" data-url-archivar="{% url 'contacts:archivar' c.pk %}">
+  <div class="kcard-top">
+    <a class="kcard-name" href="{% url 'contacts:detail' c.pk %}" draggable="false">{{ c.nombre }}</a>
+    <button type="button" class="kcard-menu" title="Mover a otra etapa" aria-label="Mover a otra etapa">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+    </button>
+  </div>
+  <div class="kcard-phone">{{ c.telefono }}</div>
+  {% if c.archivado %}
+  <div class="kcard-archivo">
+    <div class="kcard-archivo-motivo">{{ c.archivado_motivo.nombre|default:"Sin motivo" }}</div>
+    {% if c.archivado_comentario %}<div class="kcard-archivo-coment" title="{{ c.archivado_comentario }}">{{ c.archivado_comentario|truncatechars:90 }}</div>{% endif %}
+    <div class="kcard-archivo-meta">{% if c.etapa %}Antes: {{ c.etapa.nombre }}{% endif %}{% if c.etapa and c.archivado_at %} · {% endif %}{% if c.archivado_at %}{{ c.archivado_at|date:"d/m/Y" }}{% endif %}</div>
+  </div>
+  {% endif %}
+  {% if c.grupo or user.can_see_all %}
+  <div class="kcard-meta">
+    {% if c.grupo %}<span class="kcard-tag">{{ c.grupo }}</span>{% endif %}
+    {% if user.can_see_all %}
+      {% if c.agente %}
+      <span class="kcard-agent" title="Agente asignado">{{ c.agente.get_full_name|default:c.agente.username }}</span>
+      {% else %}
+      <span class="kcard-agent kcard-agent-none">Sin agente</span>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+  <div class="kcard-foot">
+    <span title="Último mensaje">{% if c.ultimo_msg %}Últ. mensaje {{ c.ultimo_msg|date:"d/m H:i" }}{% else %}Sin mensajes{% endif %}</span>
+    {% if c.conv_id %}
+    <a href="{% url 'whatsapp:inbox' %}?conv={{ c.conv_id }}{% if c.archivado %}&archivadas=1{% endif %}" draggable="false">Chat</a>
+    {% else %}
+    <a href="{% url 'whatsapp:ir_a_conversacion' c.telefono %}" draggable="false">Iniciar chat</a>
+    {% endif %}
+  </div>
+</div>

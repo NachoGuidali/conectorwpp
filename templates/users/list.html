@@ -114,7 +114,9 @@ document.querySelectorAll('.toggle-btn').forEach(btn => {
       headers: {'X-CSRFToken': '{{ csrf_token }}'},
     });
     const data = await res.json();
+    if (data.warning) alert(data.warning);
     if (data.ok) location.reload();
+    else if (data.error) alert(data.error);
   });
 });
 </script>

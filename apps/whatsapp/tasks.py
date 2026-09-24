@@ -3,7 +3,6 @@ import random
 import requests
 from datetime import timedelta
 from celery import shared_task
-from django.db.models import Count, Q
 from django.utils import timezone
 
 logger = logging.getLogger('apps.whatsapp')
@@ -11,46 +10,11 @@ logger = logging.getLogger('apps.whatsapp')
 
 def auto_asignar_agente(conv) -> bool:
     """
-    Asigna la conversación al agente activo con menos conversaciones abiertas.
-    Solo considera agentes (rol='agente') activos (is_active=True).
-    Retorna True si se asignó, False si no hay agentes disponibles.
+    Asegura que la conversación (y su contacto) tengan agente.
+    Retorna True si quedó asignada, False si no hay agentes activos.
     """
-    from django.contrib.auth import get_user_model
-    User = get_user_model()
-
-    # Agentes activos, en turno, que reciben asignaciones automáticas, con su carga actual
-    agentes = (
-        User.objects
-        .filter(rol=User.ROL_AGENTE, is_active=True, en_turno=True, recibe_asignaciones=True)
-        .annotate(carga=Count(
-            'conversaciones',
-            filter=Q(conversaciones__archivada=False)
-        ))
-        .order_by('carga', 'pk')
-    )
-
-    if not agentes.exists():
-        # Fallback: si no hay nadie en turno, intentar con cualquier agente activo que reciba asignaciones
-        agentes = (
-            User.objects
-            .filter(rol=User.ROL_AGENTE, is_active=True, recibe_asignaciones=True)
-            .annotate(carga=Count(
-                'conversaciones',
-                filter=Q(conversaciones__archivada=False)
-            ))
-            .order_by('carga', 'pk')
-        )
-
-    if not agentes.exists():
-        logger.warning('Auto-asignación: no hay agentes disponibles para conv %s', conv.pk)
-        return False
-
-    agente = agentes.first()
-    from .models import Conversacion
-    conv.agente = agente
-    Conversacion.objects.filter(pk=conv.pk).update(agente=agente)
-    logger.info('Conv %s auto-asignada a agente %s (carga: %d)', conv.pk, agente.username, agente.carga)
-    return True
+    from apps.contacts.asignacion import asegurar_agente
+    return asegurar_agente(conv=conv) is not None
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
@@ -95,17 +59,19 @@ def process_incoming_message(self, message_data: dict):
             if update_fields:
                 conv.save(update_fields=update_fields)
 
-        # Auto-asignar si la conversación no tiene agente
-        if not conv.agente_id:
-            auto_asignar_agente(conv)
+        # Asegurar agente: el de la conversación, si no el dueño del contacto, si no por carga.
+        # También reasigna si el agente actual fue desactivado.
+        from apps.contacts.asignacion import asegurar_agente
+        asegurar_agente(conv=conv, contacto=contacto)
 
         conv.ultimo_mensaje_at = message_data.get('timestamp', timezone.now())
         conv.mensajes_no_leidos = conv.mensajes_no_leidos + 1
         conv.ventana_activa = True
         conv.ventana_expira_at = timezone.now() + timedelta(hours=24)
-        # Si estaba archivada y escribe de nuevo, desarchivar automáticamente
-        if conv.archivada:
-            conv.archivada = False
+        # Si estaba archivada y escribe de nuevo, desarchivar automáticamente (conversación y contacto)
+        if conv.archivada or (contacto and contacto.archivado):
+            from apps.contacts.archivo import desarchivar
+            desarchivar(conv=conv, contacto=contacto, detalle='El cliente volvió a escribir')
             logger.info('Conv %s desarchivada automáticamente por nuevo mensaje', conv.pk)
         conv.save()
 
@@ -229,3 +195,18 @@ def expire_24h_windows():
     ).update(ventana_activa=False)
     if updated:
         logger.info('Expired %d WhatsApp 24h windows', updated)
+
+
+@shared_task
+def asignar_conversaciones_sin_agente():
+    """Red de seguridad: asigna conversaciones activas que hayan quedado sin agente
+    (por ejemplo, si en algún momento no había ningún agente activo)."""
+    from apps.contacts.asignacion import asegurar_agente
+    from .models import Conversacion
+    pendientes = list(
+        Conversacion.objects.filter(agente__isnull=True, archivada=False)
+        .select_related('contacto__agente')
+    )
+    asignadas = sum(1 for conv in pendientes if asegurar_agente(conv=conv))
+    if pendientes:
+        logger.info('Conversaciones sin agente: %d asignadas de %d', asignadas, len(pendientes))

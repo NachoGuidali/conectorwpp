@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from . import views, views_pipeline
 
 app_name = 'contacts'
 
@@ -10,6 +10,14 @@ urlpatterns = [
     path('<int:pk>/', views.ContactoDetailView.as_view(), name='detail'),
     path('<int:pk>/editar/', views.ContactoUpdateView.as_view(), name='update'),
     path('<int:pk>/eliminar/', views.ContactoDeleteView.as_view(), name='delete'),
+    path('<int:pk>/etapa/', views_pipeline.ContactoEtapaView.as_view(), name='cambiar_etapa'),
+    path('<int:pk>/agente/', views_pipeline.ContactoAgenteView.as_view(), name='cambiar_agente'),
+    path('<int:pk>/archivar/', views_pipeline.ContactoArchivarView.as_view(), name='archivar'),
+    path('<int:pk>/desarchivar/', views_pipeline.ContactoDesarchivarView.as_view(), name='desarchivar'),
+
+    path('pipeline/', views_pipeline.KanbanView.as_view(), name='kanban'),
+    path('pipeline/columna/', views_pipeline.KanbanColumnaAPIView.as_view(), name='kanban_columna'),
+    path('etapas/', views_pipeline.EtapasView.as_view(), name='etapas'),
 
     path('campos/', views.CampoListView.as_view(), name='campos'),
     path('campos/nuevo/', views.CampoCreateView.as_view(), name='campo_create'),

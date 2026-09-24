@@ -53,6 +53,47 @@
     transition: background .1s;
   }
   .conv-card:hover { background: var(--bg4); }
+
+  .pipe-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .pipe-select {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px 10px; color: var(--text); font-size: 13px; font-family: inherit; outline: none; cursor: pointer;
+    transition: border-color .2s;
+  }
+  .pipe-select:focus { border-color: var(--green); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .hist-row { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .hist-row:last-child { border-bottom: none; }
+  .hist-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-top: 5px; flex-shrink: 0; }
+  .hist-dot-agente { background: var(--blue); }
+  .hist-text { font-size: 13px; color: var(--text2); }
+  .hist-text strong { color: var(--text); font-weight: 500; }
+  .hist-meta { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .hist-dot-archivo { background: var(--text3); }
+  .hist-coment { font-size: 12px; color: var(--text2); margin-top: 3px; padding-left: 8px; border-left: 2px solid var(--border); }
+
+  .archivo-banner {
+    display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; margin-bottom: 16px;
+    background: var(--bg3); border: 1px dashed var(--text3); border-radius: var(--radius); color: var(--text2);
+  }
+  .archivo-banner-title { font-size: 14px; font-weight: 600; color: var(--text); }
+  .archivo-banner-text { font-size: 13px; margin-top: 4px; line-height: 1.5; }
+  .archivo-banner-meta { font-size: 11px; color: var(--text3); margin-top: 6px; }
+
+  .modal-overlay { position: fixed; inset: 0; z-index: 2000; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 16px; }
+  .modal-overlay.open { display: flex; }
+  .modal { width: 400px; max-width: 100%; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .modal h3 { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+  .modal label { display: block; font-size: 12px; color: var(--text2); margin: 10px 0 5px; }
+  .modal select, .modal textarea {
+    width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px 10px; color: var(--text); font-size: 13px; font-family: inherit; outline: none;
+  }
+  .modal textarea { resize: vertical; min-height: 70px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  @media (max-width: 768px) {
+    .detail-grid, .pipe-grid { grid-template-columns: 1fr; }
+  }
 </style>
 {% endblock %}
 
@@ -65,6 +106,13 @@
       <div style="font-size:16px; font-weight:600;">{{ contacto.nombre }}</div>
       <div style="font-size:12px; color:var(--text3); font-family:'DM Mono',monospace;">{{ contacto.telefono }}</div>
     </div>
+    {% if puede_editar_pipeline %}
+      {% if contacto.archivado %}
+      <button type="button" class="btn btn-outline" onclick="desarchivarContacto()">Desarchivar</button>
+      {% else %}
+      <button type="button" class="btn btn-outline" onclick="document.getElementById('archivo-modal').classList.add('open')">Archivar</button>
+      {% endif %}
+    {% endif %}
     <a href="{% url 'contacts:update' contacto.pk %}" class="btn btn-outline">Editar</a>
     <form method="post" action="{% url 'contacts:delete' contacto.pk %}" onsubmit="return confirm('¿Eliminar contacto?');" style="display:inline;">
       {% csrf_token %}
@@ -73,10 +121,58 @@
   </div>
 
   <div class="page-body">
+    {% if contacto.archivado %}
+    <div class="archivo-banner">
+      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
+      <div style="flex:1;">
+        <div class="archivo-banner-title">Archivado: {{ contacto.archivado_motivo.nombre|default:"sin motivo registrado" }}</div>
+        {% if contacto.archivado_comentario %}<div class="archivo-banner-text">{{ contacto.archivado_comentario|linebreaksbr }}</div>{% endif %}
+        <div class="archivo-banner-meta">
+          {% if contacto.archivado_at %}{{ contacto.archivado_at|date:"d/m/Y H:i" }}{% if contacto.archivado_por %} · {{ contacto.archivado_por.get_full_name|default:contacto.archivado_por.username }}{% endif %}{% else %}Archivado antes de que se registraran motivos{% endif %}
+          {% if contacto.etapa %} · Etapa al archivar: {{ contacto.etapa.nombre }}{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
     <div class="detail-grid">
 
       <!-- Datos base -->
       <div>
+        <div class="card">
+          <div class="card-title">Pipeline</div>
+          <div class="pipe-grid">
+            <div>
+              <div class="field-label">Etapa</div>
+              {% if puede_editar_pipeline and etapas %}
+              <select class="pipe-select" data-url="{% url 'contacts:cambiar_etapa' contacto.pk %}" data-field="etapa_id">
+                {% if not contacto.etapa %}<option value="" selected disabled>Sin etapa</option>{% endif %}
+                {% for e in etapas %}
+                <option value="{{ e.pk }}" {% if e.pk == contacto.etapa_id %}selected{% endif %}>{{ e.nombre }}</option>
+                {% endfor %}
+              </select>
+              {% else %}
+              <div class="field-value">{% if contacto.etapa %}<span class="dot" style="background:{{ contacto.etapa.color }};"></span>{{ contacto.etapa.nombre }}{% else %}Sin etapa{% endif %}</div>
+              {% endif %}
+            </div>
+            <div>
+              <div class="field-label">Agente asignado</div>
+              {% if agentes is not None %}
+              <select class="pipe-select" data-url="{% url 'contacts:cambiar_agente' contacto.pk %}" data-field="agente_id">
+                {% if not contacto.agente or not contacto.agente.is_active %}<option value="" selected disabled>{% if contacto.agente %}{{ contacto.agente.get_full_name|default:contacto.agente.username }} (inactivo){% else %}Sin agente{% endif %}</option>{% endif %}
+                {% for a in agentes %}
+                <option value="{{ a.pk }}" {% if a.pk == contacto.agente_id %}selected{% endif %}>{{ a.get_full_name|default:a.username }}</option>
+                {% endfor %}
+              </select>
+              {% else %}
+              <div class="field-value">{{ contacto.agente.get_full_name|default:contacto.agente.username|default:"Sin agente" }}</div>
+              {% endif %}
+            </div>
+          </div>
+          {% if contacto.etapa_actualizada_at %}
+          <div style="font-size:11px; color:var(--text3); margin-top:10px;">En esta etapa desde {{ contacto.etapa_actualizada_at|date:"d/m/Y H:i" }}</div>
+          {% endif %}
+        </div>
+
         <div class="card">
           <div class="card-title">Información del contacto</div>
           <div class="field-row">
@@ -115,7 +211,7 @@
         <div class="card">
           <div class="card-title">Conversación</div>
           {% if conversacion %}
-          <a href="{% url 'whatsapp:inbox' %}?conv={{ conversacion.pk }}" class="conv-card">
+          <a href="{% url 'whatsapp:inbox' %}?conv={{ conversacion.pk }}{% if conversacion.archivada %}&archivadas=1{% endif %}" class="conv-card">
             <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
             <div>
               <div style="font-size:13px; color:var(--text);">Ver conversación</div>
@@ -130,6 +226,30 @@
             Iniciar conversación
           </a>
           {% endif %}
+        </div>
+
+        <div class="card">
+          <div class="card-title">Historial</div>
+          {% for h in historial %}
+          <div class="hist-row">
+            <div class="hist-dot {% if h.tipo == 'agente' %}hist-dot-agente{% elif h.tipo == 'archivo' %}hist-dot-archivo{% endif %}"></div>
+            <div style="flex:1;">
+              <div class="hist-text">
+                {% if h.tipo == 'etapa' %}
+                  {% if h.valor_anterior %}{{ h.valor_anterior }} → {% endif %}<strong>{{ h.valor_nuevo|default:"Sin etapa" }}</strong>
+                {% elif h.tipo == 'archivo' %}
+                  <strong>{{ h.valor_nuevo }}</strong>
+                  {% if h.comentario %}<div class="hist-coment">{{ h.comentario|linebreaksbr }}</div>{% endif %}
+                {% else %}
+                  Agente: {% if h.valor_anterior %}{{ h.valor_anterior }} → {% endif %}<strong>{{ h.valor_nuevo }}</strong>
+                {% endif %}
+              </div>
+              <div class="hist-meta">{{ h.created_at|date:"d/m/Y H:i" }} · {% if h.usuario %}{{ h.usuario.get_full_name|default:h.usuario.username }}{% else %}Automático{% endif %}</div>
+            </div>
+          </div>
+          {% empty %}
+          <div style="color:var(--text3); font-size:13px;">Sin movimientos todavía.</div>
+          {% endfor %}
         </div>
       </div>
 
@@ -225,4 +345,64 @@
     </div>
   </div>
 </div>
+{% if puede_editar_pipeline and not contacto.archivado %}
+<div class="modal-overlay" id="archivo-modal" role="dialog" aria-modal="true" onclick="if (event.target === this) this.classList.remove('open')">
+  <form class="modal" id="archivo-form">
+    <h3>Archivar {{ contacto.nombre }}</h3>
+    <label for="archivo-motivo">Motivo</label>
+    <select id="archivo-motivo" name="motivo_id" required>
+      <option value="" disabled selected>Elegí un motivo…</option>
+      {% for m in motivos %}<option value="{{ m.pk }}">{{ m.nombre }}</option>{% endfor %}
+    </select>
+    <label for="archivo-comentario">Comentario <span style="color:var(--text3);">(opcional)</span></label>
+    <textarea id="archivo-comentario" name="comentario" maxlength="1000"></textarea>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" onclick="document.getElementById('archivo-modal').classList.remove('open')">Cancelar</button>
+      <button type="submit" class="btn btn-green">Archivar</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function postContacto(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded'},
+    body: body || '',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) { alert(data.error || 'No se pudo guardar.'); return; }
+  location.reload();
+}
+async function desarchivarContacto() {
+  await postContacto('{% url "contacts:desarchivar" contacto.pk %}');
+}
+const archivoForm = document.getElementById('archivo-form');
+if (archivoForm) archivoForm.addEventListener('submit', e => {
+  e.preventDefault();
+  postContacto('{% url "contacts:archivar" contacto.pk %}', new URLSearchParams(new FormData(archivoForm)).toString());
+});
+
+document.querySelectorAll('.pipe-select').forEach(sel => {
+  let previo = sel.value;
+  sel.addEventListener('change', async () => {
+    try {
+      const res = await fetch(sel.dataset.url, {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded'},
+        body: sel.dataset.field + '=' + encodeURIComponent(sel.value),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar.');
+      location.reload();
+    } catch (err) {
+      sel.value = previo;
+      alert(err.message);
+    }
+  });
+});
+</script>
 {% endblock %}

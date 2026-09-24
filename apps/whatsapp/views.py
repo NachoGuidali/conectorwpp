@@ -75,6 +75,18 @@ class WebhookView(View):
         return HttpResponse('OK', status=200)
 
 
+def _etapas_si_contacto(conv):
+    if conv is None or not conv.contacto_id:
+        return []
+    from apps.contacts.models import Etapa
+    return list(Etapa.objects.all())
+
+
+def _motivos_archivo():
+    from apps.contacts.models import MotivoArchivo
+    return list(MotivoArchivo.objects.filter(activo=True))
+
+
 class InboxView(LoginRequiredMixin, View):
     template_name = 'whatsapp/inbox.html'
 
@@ -162,6 +174,8 @@ class InboxView(LoginRequiredMixin, View):
             'agents': agents,
             'last_msg_id': last_msg_id,
             'contacto_campos': contacto_campos,
+            'etapas': _etapas_si_contacto(selected_conv),
+            'motivos_archivo': _motivos_archivo() if selected_conv else [],
         })
 
     def post(self, request):
@@ -303,25 +317,23 @@ class DashboardSupervisorView(LoginRequiredMixin, View):
             agente.save(update_fields=['recibe_asignaciones'])
             return redirect(request.POST.get('next') or request.path)
 
-        desde_pk = request.POST.get('desde_agente')
-        hacia_pk = request.POST.get('hacia_agente') or None
-
-        convs = Conversacion.objects.filter(agente_id=desde_pk, archivada=False)
-        if hacia_pk:
-            convs.update(agente_id=hacia_pk)
-            msg = f'{convs.count()} conversaciones reasignadas.'
-        else:
-            # Redistribuir automáticamente
-            from apps.whatsapp.tasks import auto_asignar_agente
-            pks = list(convs.values_list('pk', flat=True))
-            convs.update(agente=None)
-            for conv in Conversacion.objects.filter(pk__in=pks):
-                auto_asignar_agente(conv)
-            msg = f'{len(pks)} conversaciones redistribuidas automáticamente.'
-
+        from apps.contacts.asignacion import redistribuir_cartera
         from django.contrib import messages as msgs
-        msgs.success(request, msg)
-        return redirect(f"{request.path}?agente={desde_pk}")
+        desde = get_object_or_404(User, pk=request.POST.get('desde_agente') or 0)
+        hacia_pk = request.POST.get('hacia_agente') or None
+        hacia = get_object_or_404(User, pk=hacia_pk, is_active=True) if hacia_pk else None
+
+        if hacia and hacia.pk == desde.pk:
+            msgs.error(request, 'Elegí un agente distinto.')
+        else:
+            n = redistribuir_cartera(desde, destino=hacia, solo_abiertas=True, usuario=request.user)
+            if n is None:
+                msgs.error(request, 'No hay otro agente activo para redistribuir. No se movió nada.')
+            elif hacia:
+                msgs.success(request, f'{n} conversaciones reasignadas.')
+            else:
+                msgs.success(request, f'{n} conversaciones redistribuidas automáticamente.')
+        return redirect(f"{request.path}?agente={desde.pk}")
 
 
 class ConversacionesExportarView(LoginRequiredMixin, View):
@@ -684,6 +696,56 @@ class InboxSSEView(LoginRequiredMixin, View):
         return response
 
 
+def _abrir_conversacion_saliente(user, telefono, nombre='', contacto=None, desarchivar=True):
+    """
+    Busca o crea contacto y conversación para un chat iniciado por `user`.
+    El dueño se respeta si ya existe; si no, queda para el agente que la inicia
+    (o se reparte por carga si la inicia un supervisor).
+    """
+    from apps.contacts.asignacion import asegurar_agente
+    from apps.contacts.models import Contacto
+
+    if contacto is None:
+        contacto, _ = Contacto.objects.get_or_create(
+            telefono=telefono,
+            defaults={'nombre': nombre or telefono},
+        )
+        if contacto.nombre == contacto.telefono and nombre:
+            contacto.nombre = nombre
+            contacto.save(update_fields=['nombre'])
+
+    conv, _ = Conversacion.objects.get_or_create(
+        telefono=telefono,
+        defaults={
+            'nombre_contacto': contacto.nombre or telefono,
+            'contacto': contacto,
+            'origen_conversacion': Conversacion.ORIGEN_SALIENTE,
+        },
+    )
+    update_fields = []
+    if not conv.contacto_id:
+        conv.contacto = contacto
+        update_fields.append('contacto')
+    if update_fields:
+        conv.save(update_fields=update_fields)
+    if desarchivar and (conv.archivada or conv.contacto.archivado):
+        from apps.contacts.archivo import desarchivar as desarchivar_contacto
+        desarchivar_contacto(conv=conv, usuario=user, detalle='Se inició una conversación')
+
+    asegurar_agente(conv=conv, contacto=conv.contacto, iniciador=user)
+    return conv
+
+
+def _redirect_a_conversacion(request, conv):
+    """Redirige al chat, salvo que un agente intente abrir un contacto de otro agente."""
+    from django.urls import reverse
+    if not request.user.can_see_all and conv.agente_id != request.user.pk:
+        dueno = (conv.agente.get_full_name() or conv.agente.username) if conv.agente else 'otro agente'
+        messages.error(request, f'Este contacto está asignado a {dueno}. Pedile a un supervisor que te lo reasigne.')
+        return redirect('whatsapp:inbox')
+    return redirect(f"{reverse('whatsapp:inbox')}?conv={conv.pk}")
+
+
 class IrAConversacionView(LoginRequiredMixin, View):
     """
     Deep link desde CRM externo. Acepta el teléfono en la URL (con o sin +),
@@ -691,30 +753,11 @@ class IrAConversacionView(LoginRequiredMixin, View):
     Ejemplo: /whatsapp/ir/5491133558877/
     """
     def get(self, request, telefono):
-        from django.urls import reverse
         # Normalizar: asegurar que tenga +
         if not telefono.startswith('+'):
             telefono = '+' + telefono
-
-        conv = Conversacion.objects.filter(telefono=telefono).first()
-
-        if conv:
-            if conv.archivada:
-                conv.archivada = False
-                conv.save(update_fields=['archivada'])
-        else:
-            # Crear conversación nueva y vincular contacto si existe
-            from apps.contacts.models import Contacto
-            contacto = Contacto.objects.filter(telefono=telefono).first()
-            conv = Conversacion.objects.create(
-                telefono=telefono,
-                nombre_contacto=contacto.nombre if contacto else telefono,
-                contacto=contacto,
-                agente=request.user if not request.user.can_see_all else None,
-                origen_conversacion=Conversacion.ORIGEN_SALIENTE,
-            )
-
-        return redirect(f"{reverse('whatsapp:inbox')}?conv={conv.pk}")
+        conv = _abrir_conversacion_saliente(request.user, telefono)
+        return _redirect_a_conversacion(request, conv)
 
 
 class NuevaConversacionView(LoginRequiredMixin, View):
@@ -723,85 +766,57 @@ class NuevaConversacionView(LoginRequiredMixin, View):
         nombre = request.POST.get('nombre', '').strip()
         contacto_id = request.POST.get('contacto_id', '').strip()
 
-        if not telefono:
+        if not telefono and not contacto_id:
+            messages.error(request, 'Ingresá un número de teléfono.')
+            return redirect('whatsapp:inbox')
+
+        contacto = None
+        if contacto_id:
+            from apps.contacts.models import Contacto
+            contacto = Contacto.objects.filter(pk=contacto_id).first() if contacto_id.isdigit() else None
+            if contacto:
+                telefono = contacto.telefono
+        if not contacto and not telefono:
             messages.error(request, 'Ingresá un número de teléfono.')
             return redirect('whatsapp:inbox')
         if not telefono.startswith('+'):
             telefono = '+' + telefono
 
-        contacto = None
-        try:
-            from apps.contacts.models import Contacto
-            if contacto_id:
-                contacto = Contacto.objects.get(pk=int(contacto_id))
-                telefono = contacto.telefono
-                nombre = contacto.nombre
-            else:
-                contacto, _ = Contacto.objects.get_or_create(
-                    telefono=telefono,
-                    defaults={'nombre': nombre or telefono},
-                )
-                if contacto.nombre == contacto.telefono and nombre:
-                    contacto.nombre = nombre
-                    contacto.save(update_fields=['nombre'])
-                nombre = nombre or contacto.nombre
-        except Exception:
-            pass
-
-        conv, _ = Conversacion.objects.get_or_create(
-            telefono=telefono,
-            defaults={
-                'nombre_contacto': nombre or telefono,
-                'agente': request.user,
-                'contacto': contacto,
-                'origen_conversacion': Conversacion.ORIGEN_SALIENTE,
-            },
-        )
-        update_fields = []
-        if not conv.contacto and contacto:
-            conv.contacto = contacto
-            update_fields.append('contacto')
-        if conv.archivada:
-            conv.archivada = False
-            update_fields.append('archivada')
-        if update_fields:
-            conv.save(update_fields=update_fields)
-
-        from django.urls import reverse
-        return redirect(f"{reverse('whatsapp:inbox')}?conv={conv.pk}")
+        conv = _abrir_conversacion_saliente(request.user, telefono, nombre, contacto)
+        return _redirect_a_conversacion(request, conv)
 
 
 class AsignarAgenteView(LoginRequiredMixin, View):
     def post(self, request, pk):
         if not request.user.can_see_all:
             return JsonResponse({'ok': False, 'error': 'Sin permisos'}, status=403)
-        conv = get_object_or_404(Conversacion, pk=pk)
-        agente_id = request.POST.get('agente_id') or None
-        conv.agente_id = agente_id
-        conv.save(update_fields=['agente_id'])
-        agente_nombre = ''
-        if agente_id:
-            try:
-                u = User.objects.get(pk=agente_id)
-                agente_nombre = u.get_full_name() or u.username
-            except User.DoesNotExist:
-                pass
-        return JsonResponse({'ok': True, 'agente_nombre': agente_nombre})
+        from apps.contacts.asignacion import asignar_agente
+        conv = get_object_or_404(Conversacion.objects.select_related('contacto'), pk=pk)
+        agente = User.objects.filter(pk=request.POST.get('agente_id') or 0, is_active=True).first()
+        if agente is None:
+            return JsonResponse({'ok': False, 'error': 'Elegí un agente activo.'}, status=400)
+        asignar_agente(agente, conv=conv, usuario=request.user)
+        return JsonResponse({'ok': True, 'agente_nombre': agente.get_full_name() or agente.username})
 
 
 class ArchivarConversacionView(LoginRequiredMixin, View):
+    """Archiva la conversación y su contacto. Requiere un motivo."""
     def post(self, request, pk):
-        conv = get_object_or_404(_get_convs_qs(request.user), pk=pk)
-        conv.archivada = True
-        conv.save(update_fields=['archivada'])
+        from apps.contacts.archivo import archivar
+        from apps.contacts.models import MotivoArchivo
+        conv = get_object_or_404(_get_convs_qs(request.user).select_related('contacto'), pk=pk)
+        motivo = MotivoArchivo.objects.filter(pk=request.POST.get('motivo_id') or 0, activo=True).first()
+        if motivo is None:
+            return JsonResponse({'ok': False, 'error': 'Elegí un motivo.'}, status=400)
+        archivar(conv=conv, motivo=motivo, comentario=request.POST.get('comentario', ''), usuario=request.user)
         return JsonResponse({'ok': True})
 
 
 class DesarchivarConversacionView(LoginRequiredMixin, View):
     def post(self, request, pk):
-        conv = get_object_or_404(Conversacion, pk=pk)
-        conv.archivada = False
-        conv.save(update_fields=['archivada'])
+        from apps.contacts.archivo import desarchivar
+        conv = get_object_or_404(_get_convs_qs(request.user, include_archived=True).select_related('contacto'), pk=pk)
+        desarchivar(conv=conv, usuario=request.user)
         return JsonResponse({'ok': True})
 
 
@@ -1122,10 +1137,7 @@ class APIEnviarMensajeView(View):
             else:
                 result = send_text_message(phone, message)
                 tipo = Mensaje.TIPO_TEXTO
-            conv, _ = Conversacion.objects.get_or_create(
-                telefono=phone,
-                defaults={'nombre_contacto': phone, 'origen_conversacion': Conversacion.ORIGEN_SALIENTE},
-            )
+            conv = _abrir_conversacion_saliente(None, phone, desarchivar=False)
             msg = Mensaje.objects.create(
                 conversacion=conv, direccion=Mensaje.DIR_SALIENTE, tipo=tipo,
                 contenido=message, media_url=media_url,
@@ -1150,6 +1162,7 @@ class APIContactoView(View):
         "nombre": "Juan García",        (opcional)
         "email": "juan@mail.com",       (opcional)
         "notas": "...",                 (opcional)
+        "etapa": "Interesado",          (opcional: nombre o id de la etapa del pipeline)
         "campos": {                     (opcional)
             "localidad": "Canning",
             "origen": "whatsapp",
@@ -1216,17 +1229,31 @@ class APIContactoView(View):
             )
             campos_guardados.append(slug_clean)
 
-        # Vincular conversación si existe y obtener agente asignado
+        # Etapa del pipeline (opcional)
+        etapa_error = None
+        etapa_valor = data.get('etapa')
+        if etapa_valor not in (None, ''):
+            from apps.contacts.models import Etapa
+            from apps.contacts.pipeline import cambiar_etapa
+            etapa_valor = str(etapa_valor).strip()
+            etapa = (
+                Etapa.objects.filter(pk=int(etapa_valor)).first() if etapa_valor.isdigit()
+                else Etapa.objects.filter(nombre__iexact=etapa_valor).first()
+            )
+            if etapa:
+                cambiar_etapa(contacto, etapa)
+            else:
+                etapa_error = f'Etapa "{etapa_valor}" no existe'
+
+        # Vincular conversación si existe, sincronizar dueño y obtener agente asignado
         agente_id = None
         agente_username = None
         agente_nombre = None
         try:
-            conv = Conversacion.objects.filter(telefono=phone, contacto__isnull=True).first()
-            if conv:
-                conv.contacto = contacto
-                if nombre and not conv.nombre_contacto:
-                    conv.nombre_contacto = nombre
-                conv.save(update_fields=['contacto', 'nombre_contacto'])
+            from apps.contacts.asignacion import asegurar_agente, vincular_conversacion
+            conv = vincular_conversacion(phone, contacto, nombre or None)
+            if conv is None or conv.contacto_id != contacto.pk:
+                asegurar_agente(contacto=contacto)
 
             # Buscar agente en la conversación activa (ya vinculada o recién vinculada)
             conv_activa = Conversacion.objects.filter(
@@ -1237,10 +1264,10 @@ class APIContactoView(View):
                 agente_id = ag.pk
                 agente_username = ag.username
                 agente_nombre = f"{ag.first_name} {ag.last_name}".strip() or ag.username
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning('API contacto: error sincronizando agente de %s: %s', phone, e)
 
-        return JsonResponse({
+        respuesta = {
             'ok': True,
             'contacto_id': contacto.pk,
             'created': created,
@@ -1248,16 +1275,21 @@ class APIContactoView(View):
             'agente_id': agente_id,
             'agente_username': agente_username,
             'agente_nombre': agente_nombre,
-        })
+            'etapa': contacto.etapa.nombre if contacto.etapa_id else None,
+        }
+        if etapa_error:
+            respuesta['etapa_error'] = etapa_error
+        return JsonResponse(respuesta)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
 class APIArchivarConversacionView(View):
     """
-    Archiva (o desarchiva) una conversación desde el bot / n8n.
+    Archiva (o desarchiva) una conversación y su contacto desde el bot / n8n.
     POST /whatsapp/api/archivar/
     Body: {"phone": "+549..."} o {"conversation_id": 42}
           Opcional: {"archivar": false} para desarchivar (default: true)
+          Opcional: {"motivo": "No responde", "comentario": "..."} (motivo por nombre o id)
     Header: X-Api-Key: <CRM_API_KEY>
     """
     def post(self, request):
@@ -1281,9 +1313,24 @@ class APIArchivarConversacionView(View):
         if not conv:
             return JsonResponse({'ok': False, 'error': 'Conversación no encontrada'}, status=404)
 
+        from apps.contacts.archivo import archivar as archivar_contacto, desarchivar
+        from apps.contacts.models import MotivoArchivo
         archivar = data.get('archivar', True)
-        Conversacion.objects.filter(pk=conv.pk).update(archivada=archivar)
-        return JsonResponse({'ok': True, 'conversation_id': conv.pk, 'archivada': archivar})
+        respuesta = {'ok': True, 'conversation_id': conv.pk, 'archivada': archivar}
+        if archivar:
+            motivo = None
+            motivo_valor = str(data.get('motivo') or '').strip()
+            if motivo_valor:
+                motivo = (
+                    MotivoArchivo.objects.filter(pk=int(motivo_valor)).first() if motivo_valor.isdigit()
+                    else MotivoArchivo.objects.filter(nombre__iexact=motivo_valor).first()
+                )
+                if motivo is None:
+                    respuesta['motivo_error'] = f'Motivo "{motivo_valor}" no existe'
+            archivar_contacto(conv=conv, motivo=motivo, comentario=data.get('comentario') or 'Archivado desde n8n')
+        else:
+            desarchivar(conv=conv, detalle='Desarchivado desde n8n')
+        return JsonResponse(respuesta)
 
 
 @method_decorator(csrf_exempt, name='dispatch')

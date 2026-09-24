@@ -89,6 +89,18 @@
             </datalist>
             <div class="form-hint">Vacío = sin grupo; permite filtrar y asignar campos específicos.</div>
           </div>
+          {% if not obj and agentes is not None %}
+          <div class="form-row">
+            <label class="form-label">Agente asignado</label>
+            <select name="agente_id" class="form-input">
+              <option value="">Automático (agente con menos carga)</option>
+              {% for a in agentes %}
+              <option value="{{ a.pk }}">{{ a.get_full_name|default:a.username }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-hint">Si ya existe una conversación con este número, queda con el agente de esa conversación.</div>
+          </div>
+          {% endif %}
           <div class="form-row">
             <label class="form-label">Notas</label>
             <textarea name="notas" class="form-input">{{ obj.notas|default:'' }}</textarea>

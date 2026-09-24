@@ -126,6 +126,18 @@
           Agregar prefijo <strong>+549</strong> a números sin código de país
           <span style="font-size:11px; color:var(--text3);">ej: 1122334455 → +5491122334455</span>
         </label>
+        {% if agentes is not None %}
+        <div style="margin-top:14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; color:var(--text2);">
+          <span>Asignar los contactos nuevos a</span>
+          <select name="agente_id" class="form-select">
+            <option value="">Repartir entre agentes (por carga)</option>
+            {% for a in agentes %}
+            <option value="{{ a.pk }}">{{ a.get_full_name|default:a.username }}</option>
+            {% endfor %}
+          </select>
+          <span style="font-size:11px; color:var(--text3);">Los que ya tienen agente lo conservan.</span>
+        </div>
+        {% endif %}
       </div>
 
       <div style="display:flex; gap:12px; align-items:center;">

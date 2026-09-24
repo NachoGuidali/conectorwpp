@@ -106,39 +106,14 @@ class UserToggleView(AdminRequiredMixin, View):
         user.is_active = not user.is_active
         user.save(update_fields=['is_active'])
 
-        # Si se desactiva un agente, redistribuir sus conversaciones abiertas
-        if was_active and not user.is_active and user.rol == User.ROL_AGENTE:
-            _redistribuir_conversaciones(user)
+        # Si se desactiva un usuario, repartir toda su cartera (contactos y conversaciones)
+        # entre los agentes activos, para que nada quede a nombre de alguien inactivo.
+        if was_active and not user.is_active:
+            from apps.contacts.asignacion import redistribuir_cartera
+            if redistribuir_cartera(user) is None:
+                return JsonResponse({
+                    'ok': True, 'is_active': user.is_active,
+                    'warning': 'No hay otros agentes activos: su cartera queda asignada hasta que haya uno.',
+                })
 
         return JsonResponse({'ok': True, 'is_active': user.is_active})
-
-
-def _redistribuir_conversaciones(agente_desactivado):
-    """
-    Reasigna las conversaciones abiertas del agente desactivado
-    a otros agentes activos (menor carga primero).
-    """
-    from apps.whatsapp.models import Conversacion
-    from apps.whatsapp.tasks import auto_asignar_agente
-
-    # Guardar PKs antes de desasignar
-    conv_pks = list(
-        Conversacion.objects.filter(agente=agente_desactivado, archivada=False)
-        .values_list('pk', flat=True)
-    )
-    count = len(conv_pks)
-    if not count:
-        return
-
-    # Desasignar primero para que auto_asignar no cuente al agente desactivado
-    Conversacion.objects.filter(pk__in=conv_pks).update(agente=None)
-
-    # Reasignar de a una para distribuir carga equitativamente
-    for conv in Conversacion.objects.filter(pk__in=conv_pks):
-        auto_asignar_agente(conv)
-
-    import logging
-    logging.getLogger('apps.whatsapp').info(
-        'Redistribuidas %d conversaciones del agente desactivado %s',
-        count, agente_desactivado.username
-    )

@@ -131,10 +131,12 @@ def normalizar_telefono(telefono: str, agregar_prefijo_ar: bool = True) -> str:
     return '+549' + t
 
 
-def import_from_rows(headers, rows, col_roles, col_tipos, update_existing=True, agregar_prefijo_ar=True):
+def import_from_rows(headers, rows, col_roles, col_tipos, update_existing=True, agregar_prefijo_ar=True,
+                     asignador=None):
     """
     col_roles: {str(col_idx): role}
     col_tipos: {str(col_idx): tipo}  (for role='campo')
+    asignador: función(contacto) que asegura el dueño de cada contacto importado
     Returns: (created, updated, skipped, errors)
     """
     created = updated = skipped = 0
@@ -222,14 +224,12 @@ def import_from_rows(headers, rows, col_roles, col_tipos, update_existing=True, 
                         defaults={'valor': row[col_idx]},
                     )
 
-            # Auto-link existing Conversacion with same phone
-            try:
-                from apps.whatsapp.models import Conversacion
-                Conversacion.objects.filter(
-                    telefono=telefono, contacto__isnull=True
-                ).update(contacto=contacto, nombre_contacto=nombre)
-            except Exception:
-                pass
+            # Vincular conversación existente y asegurar dueño
+            if asignador is not None:
+                asignador(contacto)
+            else:
+                from .asignacion import vincular_conversacion
+                vincular_conversacion(telefono, contacto, nombre)
 
         except Exception as e:
             errors.append(f'Fila {row_num}: {e}')

@@ -1,0 +1,17 @@
+version: '3.9'
+
+# Override para probar esta copia en local sin chocar con otros proyectos
+# (8080 y 5432 ya están ocupados en esta máquina).
+# Uso: docker compose -p conectorwp-prueba -f docker-compose.yml -f docker-compose.prueba.yml up -d --build
+
+services:
+
+  web:
+    # runserver en vez de gunicorn: recarga sola al editar código y templates
+    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "127.0.0.1:8010:8000"
+
+  evolution-api:
+    ports:
+      - "127.0.0.1:8081:8080"
