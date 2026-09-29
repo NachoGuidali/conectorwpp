@@ -350,9 +350,13 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
         fecha_hasta = request.GET.get('hasta', '').strip()
         origen = request.GET.get('origen', '').strip()
 
+        from apps.contacts.models import CampoPersonalizado, ValorCampo
+        campos_custom = list(CampoPersonalizado.objects.filter(activo=True).order_by('orden', 'etiqueta'))
+
         qs = (
             Conversacion.objects.all()
-            .select_related('agente', 'contacto')
+            .select_related('agente', 'contacto', 'contacto__etapa')
+            .prefetch_related('contacto__valores__campo')
             .order_by('-ultimo_mensaje_at')
         )
 
@@ -380,7 +384,10 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
         wb = Workbook()
         ws = wb.active
         ws.title = 'Conversaciones'
-        headers = ['Nombre', 'Teléfono', 'Agente', 'Email agente', 'Estado', 'Archivada', 'Origen', 'Último mensaje', 'Creado']
+        headers = [
+            'Nombre', 'Teléfono', 'Email contacto', 'Grupo', 'Etapa', 'Notas',
+            'Agente', 'Email agente', 'Estado', 'Archivada', 'Origen', 'Último mensaje', 'Creado',
+        ] + [c.etiqueta for c in campos_custom]
         ws.append(headers)
 
         estado_labels = dict(Conversacion.ESTADO_CHOICES)
@@ -390,13 +397,26 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
             if conv.agente:
                 agente_nombre = f"{conv.agente.first_name} {conv.agente.last_name}".strip() or conv.agente.username
                 agente_email = conv.agente.email or ''
-            nombre = ''
-            if conv.contacto:
-                nombre = conv.contacto.nombre
-            nombre = nombre or conv.nombre_contacto or conv.telefono
+            c = conv.contacto
+            nombre = (c.nombre if c else None) or conv.nombre_contacto or conv.telefono
+            email_contacto = c.email if c else ''
+            grupo = c.grupo if c else ''
+            etapa = c.etapa.nombre if (c and c.etapa) else ''
+            notas = c.notas if c else ''
+            # Valores de campos personalizados (ya prefetcheados)
+            if c:
+                val_map = {v.campo_id: v.valor for v in c.valores.all()}
+            else:
+                val_map = {}
+            custom_vals = [val_map.get(campo.pk, '') for campo in campos_custom]
+
             ws.append([
                 nombre,
                 conv.telefono,
+                email_contacto,
+                grupo,
+                etapa,
+                notas,
                 agente_nombre,
                 agente_email,
                 estado_labels.get(conv.estado, conv.estado),
@@ -404,7 +424,7 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
                 dict(Conversacion.ORIGEN_CHOICES).get(conv.origen_conversacion, conv.origen_conversacion),
                 conv.ultimo_mensaje_at.strftime('%d/%m/%Y %H:%M') if conv.ultimo_mensaje_at else '',
                 conv.created_at.strftime('%d/%m/%Y %H:%M') if conv.created_at else '',
-            ])
+            ] + custom_vals)
 
         for i in range(1, len(headers) + 1):
             ws.column_dimensions[get_column_letter(i)].width = 24
