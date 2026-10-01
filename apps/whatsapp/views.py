@@ -306,6 +306,7 @@ class DashboardSupervisorView(LoginRequiredMixin, View):
             'agente_sel': agente_sel,
             'convs_agente': convs_agente,
             'todos_agentes': User.objects.filter(rol=User.ROL_AGENTE, is_active=True).order_by('username'),
+            'campanas': Campana.objects.filter(activa=True).order_by('nombre'),
         })
 
     def post(self, request):
@@ -386,6 +387,11 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
             qs = qs.filter(agente__isnull=True)
         elif agente_filter.isdigit():
             qs = qs.filter(agente_id=int(agente_filter))
+        campana_filter = request.GET.get('campana', '').strip()
+        if campana_filter == 'sin_campana':
+            qs = qs.filter(campana__isnull=True)
+        elif campana_filter.isdigit():
+            qs = qs.filter(campana_id=int(campana_filter))
 
         wb = Workbook()
         ws = wb.active
