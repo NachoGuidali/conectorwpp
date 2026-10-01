@@ -1151,11 +1151,12 @@ class CampanaListView(SupervisorRequiredMixin, View):
             telefono_negocio = config.telefono_negocio
         except ConfiguracionWhatsApp.DoesNotExist:
             telefono_negocio = ''
-        campanas = Campana.objects.all()
-        for c in campanas:
-            c._link = c.whatsapp_link(telefono_negocio)
+        campanas_data = [
+            {'campana': c, 'link': c.whatsapp_link(telefono_negocio)}
+            for c in Campana.objects.all()
+        ]
         return render(request, self.template_name, {
-            'campanas': campanas,
+            'campanas_data': campanas_data,
             'telefono_negocio': telefono_negocio,
         })
 

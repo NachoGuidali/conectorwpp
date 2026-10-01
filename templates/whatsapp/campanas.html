@@ -112,9 +112,9 @@
   <!-- Lista campañas -->
   <div class="card">
     <div class="card-title">Campañas creadas</div>
-    {% if campanas %}
+    {% if campanas_data %}
     <div class="campana-list">
-      {% for c in campanas %}
+      {% for item in campanas_data %}{% with c=item.campana %}
       <div class="campana-item {% if not c.activa %}inactiva{% endif %}">
         <div class="campana-color" style="background: {{ c.color }}"></div>
         <div class="campana-body">
@@ -123,10 +123,10 @@
             {% if c.activa %}<span class="badge-activa">Activa</span>{% else %}<span class="badge-inactiva">Pausada</span>{% endif %}
           </div>
           <div class="campana-keyword">{{ c.keyword }}</div>
-          {% if c._link %}
+          {% if item.link %}
           <div class="campana-link">
-            <input type="text" value="{{ c._link }}" readonly onclick="this.select()" title="Click para seleccionar">
-            <button class="btn btn-outline btn-sm" onclick="copyLink('{{ c._link }}', this)">Copiar link</button>
+            <input type="text" value="{{ item.link }}" readonly onclick="this.select()" title="Click para seleccionar" id="link-{{ c.pk }}">
+            <button class="btn btn-outline btn-sm" onclick="copyLink(document.getElementById('link-{{ c.pk }}').value, this)">Copiar link</button>
           </div>
           {% else %}
           <div class="campana-stats" style="color:var(--text3)">Configurá el teléfono del negocio para ver el link</div>
@@ -145,7 +145,7 @@
           </form>
         </div>
       </div>
-      {% endfor %}
+      {% endwith %}{% endfor %}
     </div>
     {% else %}
     <p style="color:var(--text3);font-size:13px">Todavía no hay campañas. Creá la primera arriba.</p>
