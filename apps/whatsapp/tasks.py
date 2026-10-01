@@ -186,7 +186,7 @@ def send_lead_to_crm_task(conv_pk: int):
     if not url:
         return
     try:
-        conv = Conversacion.objects.select_related('contacto__etapa', 'agente').get(pk=conv_pk)
+        conv = Conversacion.objects.select_related('contacto__etapa', 'agente', 'campana').get(pk=conv_pk)
     except Conversacion.DoesNotExist:
         return
     c = conv.contacto
@@ -194,7 +194,7 @@ def send_lead_to_crm_task(conv_pk: int):
         'telefono': conv.telefono,
         'nombre': conv.nombre_contacto or (c.nombre if c else ''),
         'integracion': 'conector SupReg',
-        'campaign': (c.grupo if c else '') or '',
+        'campaign': conv.campana.nombre if conv.campana else ((c.grupo if c else '') or ''),
         'vendedor': conv.agente.email if conv.agente else '',
         'email': (c.email if c else '') or '',
         'etapa': (c.etapa.nombre if c and c.etapa else '') or '',
