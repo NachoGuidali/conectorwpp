@@ -204,9 +204,10 @@ def send_lead_to_crm_task(conv_pk: int):
         'created_at': conv.created_at.isoformat(),
     }
     try:
+        logger.info('Enviando lead al CRM externo para conv %s: %s', conv.pk, payload)
         r = requests.post(url, json=payload, timeout=10)
+        logger.info('Respuesta CRM conv %s — status %s — body: %s', conv.pk, r.status_code, r.text[:500])
         r.raise_for_status()
-        logger.info('Lead enviado al CRM externo para conv %s (status %s)', conv.pk, r.status_code)
     except Exception as e:
         logger.warning('Error enviando lead al CRM externo para conv %s: %s', conv.pk, e)
 
