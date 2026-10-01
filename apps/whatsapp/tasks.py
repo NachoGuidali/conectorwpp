@@ -103,6 +103,10 @@ def process_incoming_message(self, message_data: dict):
             timestamp=message_data.get('timestamp', timezone.now()),
         )
 
+        # Notificar CRM externo si es una conversación nueva
+        if created:
+            send_lead_to_crm_task.delay(conv.pk)
+
         # Reenviar a n8n si el bot está activo (con delay random anti-ban)
         if conv.bot_n8n_activo:
             forward_to_n8n_task.apply_async(
@@ -155,6 +159,36 @@ def _forward_to_n8n(conv, message_data: dict):
         logger.info('Mensaje reenviado a n8n para conv %s (status %s)', conv.pk, r.status_code)
     except Exception as e:
         logger.warning('Error reenviando a n8n conv %s: %s', conv.pk, e)
+
+
+@shared_task(max_retries=3, default_retry_delay=30)
+def send_lead_to_crm_task(conv_pk: int):
+    """Envía un lead nuevo al CRM externo (sólo en la creación de la conversación)."""
+    from django.conf import settings
+    from .models import Conversacion
+    url = getattr(settings, 'CRM_LEAD_WEBHOOK_URL', '').strip()
+    if not url:
+        return
+    try:
+        conv = Conversacion.objects.select_related('contacto', 'agente').get(pk=conv_pk)
+    except Conversacion.DoesNotExist:
+        return
+    c = conv.contacto
+    payload = {
+        'nombre': conv.nombre_contacto or (c.nombre if c else ''),
+        'telefono': conv.telefono.lstrip('+'),
+        'email': c.email if c else '',
+        'origen': conv.origen_conversacion,
+        'agente': conv.agente.email if conv.agente else '',
+        'conversation_id': conv.pk,
+        'created_at': conv.created_at.isoformat(),
+    }
+    try:
+        r = requests.post(url, json=payload, timeout=10)
+        r.raise_for_status()
+        logger.info('Lead enviado al CRM externo para conv %s (status %s)', conv.pk, r.status_code)
+    except Exception as e:
+        logger.warning('Error enviando lead al CRM externo para conv %s: %s', conv.pk, e)
 
 
 @shared_task

@@ -734,7 +734,7 @@ def _abrir_conversacion_saliente(user, telefono, nombre='', contacto=None, desar
             contacto.nombre = nombre
             contacto.save(update_fields=['nombre'])
 
-    conv, _ = Conversacion.objects.get_or_create(
+    conv, created = Conversacion.objects.get_or_create(
         telefono=telefono,
         defaults={
             'nombre_contacto': contacto.nombre or telefono,
@@ -753,6 +753,11 @@ def _abrir_conversacion_saliente(user, telefono, nombre='', contacto=None, desar
         desarchivar_contacto(conv=conv, usuario=user, detalle='Se inició una conversación')
 
     asegurar_agente(conv=conv, contacto=conv.contacto, iniciador=user)
+
+    if created:
+        from .tasks import send_lead_to_crm_task
+        send_lead_to_crm_task.delay(conv.pk)
+
     return conv
 
 
