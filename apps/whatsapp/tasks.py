@@ -103,6 +103,11 @@ def process_incoming_message(self, message_data: dict):
             timestamp=message_data.get('timestamp', timezone.now()),
         )
 
+        # Avanzar etapa del contacto de "Nuevo" a "Contactado" al primer mensaje
+        if contacto:
+            from apps.contacts.pipeline import avanzar_etapa_si_nuevo
+            avanzar_etapa_si_nuevo(contacto)
+
         # Notificar CRM externo si es una conversación nueva
         if created:
             send_lead_to_crm_task.delay(conv.pk)

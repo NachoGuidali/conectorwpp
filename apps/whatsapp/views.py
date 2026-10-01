@@ -197,6 +197,9 @@ class InboxView(LoginRequiredMixin, View):
                 )
                 send_whatsapp_message_task.delay(msg.pk)
                 Conversacion.objects.filter(pk=conv.pk).update(ultimo_mensaje_at=timezone.now())
+                if conv.contacto_id:
+                    from apps.contacts.pipeline import avanzar_etapa_si_nuevo
+                    avanzar_etapa_si_nuevo(conv.contacto)
 
         elif action == 'send_template':
             plantilla_id = request.POST.get('plantilla_id')
@@ -215,6 +218,9 @@ class InboxView(LoginRequiredMixin, View):
                         enviado_por=request.user, timestamp=timezone.now(),
                     )
                     Conversacion.objects.filter(pk=conv.pk).update(ultimo_mensaje_at=timezone.now())
+                    if conv.contacto_id:
+                        from apps.contacts.pipeline import avanzar_etapa_si_nuevo
+                        avanzar_etapa_si_nuevo(conv.contacto)
                     messages.success(request, 'Plantilla enviada.')
                 except Exception as e:
                     messages.error(request, f'Error: {e}')
