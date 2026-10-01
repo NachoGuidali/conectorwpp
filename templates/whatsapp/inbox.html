@@ -799,7 +799,7 @@
         <option value="" disabled selected>Elegí un motivo…</option>
         {% for m in motivos_archivo %}<option value="{{ m.pk }}">{{ m.nombre }}</option>{% endfor %}
       </select>
-      <label class="modal-label" for="archivar-comentario">Comentario (opcional)</label>
+      <label class="modal-label" for="archivar-comentario" id="archivar-comentario-label">Comentario (opcional)</label>
       <textarea class="modal-input" id="archivar-comentario" name="comentario" rows="3" maxlength="1000"
                 placeholder="Ej: no contesta desde hace 2 semanas" style="resize:vertical;"></textarea>
       <div class="modal-actions">
@@ -1379,10 +1379,29 @@ async function toggleBot(type, activo) {
 function archivarConv(pk) {
   const modal = document.getElementById('archivar-modal');
   const form = document.getElementById('archivar-form');
+  const selectMotivo = document.getElementById('archivar-motivo');
+  const txtComentario = document.getElementById('archivar-comentario');
+  const lblComentario = document.getElementById('archivar-comentario-label');
+
   form.reset();
+  lblComentario.textContent = 'Comentario (opcional)';
+
+  selectMotivo.onchange = () => {
+    const esOtro = selectMotivo.options[selectMotivo.selectedIndex]?.text.trim() === 'Otro';
+    lblComentario.textContent = esOtro ? 'Comentario (requerido)' : 'Comentario (opcional)';
+    txtComentario.placeholder = esOtro ? 'Explicá brevemente el motivo' : 'Ej: no contesta desde hace 2 semanas';
+  };
+
   modal.classList.add('open');
   form.onsubmit = async e => {
     e.preventDefault();
+    const esOtro = selectMotivo.options[selectMotivo.selectedIndex]?.text.trim() === 'Otro';
+    if (esOtro && !txtComentario.value.trim()) {
+      txtComentario.focus();
+      txtComentario.style.borderColor = 'var(--color-error, #ef4444)';
+      return;
+    }
+    txtComentario.style.borderColor = '';
     const res = await fetch(`/whatsapp/conversacion/${pk}/archivar/`, {
       method: 'POST',
       headers: {'X-CSRFToken': CSRF, 'Content-Type': 'application/x-www-form-urlencoded'},
