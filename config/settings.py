@@ -118,6 +118,12 @@ N8N_LIBERAR_ASESOR_URL = os.environ.get('N8N_LIBERAR_ASESOR_URL', '')
 # CRM API Key (para n8n enviar mensajes)
 CRM_API_KEY = os.environ.get('CRM_API_KEY', '')
 
+# URL pública del servidor (usada en payloads a n8n)
+PUBLIC_URL = os.environ.get('PUBLIC_URL', '')
+
+# Webhook CRM externo: recibe un POST por cada conversación nueva
+CRM_LEAD_WEBHOOK_URL = os.environ.get('CRM_LEAD_WEBHOOK_URL', '')
+
 # Login
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
