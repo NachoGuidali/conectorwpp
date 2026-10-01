@@ -13,7 +13,7 @@ from django.views.generic import ListView
 from django.views.decorators.csrf import csrf_exempt
 
 from apps.users.models import User
-from .models import Conversacion, Mensaje, PlantillaHSM, ConfiguracionWhatsApp
+from .models import Conversacion, Mensaje, PlantillaHSM, ConfiguracionWhatsApp, Campana
 from .tasks import process_incoming_message, send_whatsapp_message_task
 from .webhook import parse_incoming_webhook, verify_webhook_token
 
@@ -30,7 +30,7 @@ class SupervisorRequiredMixin(LoginRequiredMixin):
 
 def _get_convs_qs(user, include_archived=False):
     from django.db.models import Q
-    qs = Conversacion.objects.select_related('agente').order_by('-ultimo_mensaje_at', '-pk')
+    qs = Conversacion.objects.select_related('agente', 'campana').order_by('-ultimo_mensaje_at', '-pk')
     if not include_archived:
         qs = qs.filter(archivada=False)
     if not user.can_see_all:
@@ -143,7 +143,7 @@ class InboxView(LoginRequiredMixin, View):
                     conv_qs = _get_convs_qs(request.user)
                 selected_conv = (
                     conv_qs
-                    .select_related('contacto')
+                    .select_related('contacto', 'campana')
                     .get(pk=int(conv_pk))
                 )
                 Conversacion.objects.filter(pk=selected_conv.pk).update(mensajes_no_leidos=0)
@@ -361,7 +361,7 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
 
         qs = (
             Conversacion.objects.all()
-            .select_related('agente', 'contacto', 'contacto__etapa')
+            .select_related('agente', 'contacto', 'contacto__etapa', 'campana')
             .prefetch_related('contacto__valores__campo')
             .order_by('-ultimo_mensaje_at')
         )
@@ -392,7 +392,7 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
         ws.title = 'Conversaciones'
         headers = [
             'Nombre', 'Teléfono', 'Email contacto', 'Grupo', 'Etapa', 'Notas',
-            'Agente', 'Email agente', 'Estado', 'Archivada', 'Origen', 'Último mensaje', 'Creado',
+            'Agente', 'Email agente', 'Estado', 'Archivada', 'Origen', 'Campaña', 'Último mensaje', 'Creado',
         ] + [c.etiqueta for c in campos_custom]
         ws.append(headers)
 
@@ -428,6 +428,7 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
                 estado_labels.get(conv.estado, conv.estado),
                 'Sí' if conv.archivada else 'No',
                 dict(Conversacion.ORIGEN_CHOICES).get(conv.origen_conversacion, conv.origen_conversacion),
+                conv.campana.nombre if conv.campana else '',
                 conv.ultimo_mensaje_at.strftime('%d/%m/%Y %H:%M') if conv.ultimo_mensaje_at else '',
                 conv.created_at.strftime('%d/%m/%Y %H:%M') if conv.created_at else '',
             ] + custom_vals)
@@ -1086,6 +1087,7 @@ class ConfigView(SupervisorRequiredMixin, View):
         config.evolution_api_key = request.POST.get('evolution_api_key', '').strip()
         config.evolution_instance_name = request.POST.get('evolution_instance_name', '').strip() or 'waply'
         config.webhook_token = request.POST.get('webhook_token', '').strip()
+        config.telefono_negocio = request.POST.get('telefono_negocio', '').strip()
         config.save()
         from .sender import setup_instance_webhook, ensure_instance_exists
         from django.urls import reverse
@@ -1138,6 +1140,65 @@ class LogoutInstanceView(SupervisorRequiredMixin, View):
             return JsonResponse({'ok': True})
         except Exception as e:
             return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+class CampanaListView(SupervisorRequiredMixin, View):
+    template_name = 'whatsapp/campanas.html'
+
+    def get(self, request):
+        try:
+            config = ConfiguracionWhatsApp.objects.get(pk=1)
+            telefono_negocio = config.telefono_negocio
+        except ConfiguracionWhatsApp.DoesNotExist:
+            telefono_negocio = ''
+        campanas = Campana.objects.all()
+        for c in campanas:
+            c._link = c.whatsapp_link(telefono_negocio)
+        return render(request, self.template_name, {
+            'campanas': campanas,
+            'telefono_negocio': telefono_negocio,
+        })
+
+
+class CampanaCreateView(SupervisorRequiredMixin, View):
+    def post(self, request):
+        nombre = request.POST.get('nombre', '').strip()
+        keyword = request.POST.get('keyword', '').strip()
+        color = request.POST.get('color', '#3b82f6').strip()
+        if not nombre or not keyword:
+            messages.error(request, 'Nombre y keyword son obligatorios.')
+            return redirect('whatsapp:campana_list')
+        Campana.objects.create(nombre=nombre, keyword=keyword, color=color)
+        messages.success(request, f'Campaña "{nombre}" creada.')
+        return redirect('whatsapp:campana_list')
+
+
+class CampanaUpdateView(SupervisorRequiredMixin, View):
+    def post(self, request, pk):
+        campana = get_object_or_404(Campana, pk=pk)
+        campana.nombre = request.POST.get('nombre', '').strip() or campana.nombre
+        campana.keyword = request.POST.get('keyword', '').strip() or campana.keyword
+        campana.color = request.POST.get('color', campana.color).strip()
+        campana.save()
+        messages.success(request, 'Campaña actualizada.')
+        return redirect('whatsapp:campana_list')
+
+
+class CampanaToggleView(SupervisorRequiredMixin, View):
+    def post(self, request, pk):
+        campana = get_object_or_404(Campana, pk=pk)
+        campana.activa = not campana.activa
+        campana.save(update_fields=['activa'])
+        return JsonResponse({'ok': True, 'activa': campana.activa})
+
+
+class CampanaDeleteView(SupervisorRequiredMixin, View):
+    def post(self, request, pk):
+        campana = get_object_or_404(Campana, pk=pk)
+        nombre = campana.nombre
+        campana.delete()
+        messages.success(request, f'Campaña "{nombre}" eliminada.')
+        return redirect('whatsapp:campana_list')
 
 
 @method_decorator(csrf_exempt, name='dispatch')

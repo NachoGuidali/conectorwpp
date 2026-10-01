@@ -39,6 +39,13 @@ urlpatterns = [
     path('plantillas/<int:pk>/editar/', views.PlantillaUpdateView.as_view(), name='plantilla_update'),
     path('plantillas/<int:pk>/eliminar/', views.PlantillaDeleteView.as_view(), name='plantilla_delete'),
 
+    # Campañas
+    path('campanas/', views.CampanaListView.as_view(), name='campana_list'),
+    path('campanas/nueva/', views.CampanaCreateView.as_view(), name='campana_create'),
+    path('campanas/<int:pk>/editar/', views.CampanaUpdateView.as_view(), name='campana_update'),
+    path('campanas/<int:pk>/toggle/', views.CampanaToggleView.as_view(), name='campana_toggle'),
+    path('campanas/<int:pk>/eliminar/', views.CampanaDeleteView.as_view(), name='campana_delete'),
+
     # Configuración
     path('config/', views.ConfigView.as_view(), name='config'),
     path('config/qr/', views.QRCodeView.as_view(), name='qr'),

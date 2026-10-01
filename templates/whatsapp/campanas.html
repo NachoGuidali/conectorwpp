@@ -1,0 +1,201 @@
+{% extends "base/base.html" %}
+{% block title %}Campañas — SPwap{% endblock %}
+{% block nav_campanas %}active{% endblock %}
+
+{% block extra_css %}
+<style>
+  .page { flex: 1; padding: 32px; overflow-y: auto; display: flex; flex-direction: column; gap: 24px; max-width: 900px; }
+  .page-header { display: flex; align-items: center; justify-content: space-between; }
+  .page-title { font-size: 18px; font-weight: 700; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+  .card-title { font-size: 14px; font-weight: 600; margin-bottom: 18px; }
+
+  /* Form nueva campaña */
+  .form-row { display: grid; grid-template-columns: 1fr 2fr auto auto; gap: 10px; align-items: end; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  label { font-size: 11px; font-weight: 500; color: var(--text3); text-transform: uppercase; letter-spacing: .04em; }
+  input[type=text], textarea {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px 12px; color: var(--text); font-size: 13px; font-family: inherit;
+    outline: none; transition: border-color .15s;
+  }
+  input[type=text]:focus, textarea:focus { border-color: var(--green); }
+  textarea { resize: vertical; min-height: 70px; }
+  input[type=color] { width: 42px; height: 36px; padding: 2px 3px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); cursor: pointer; }
+
+  .btn { padding: 8px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer; border: none; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn-green { background: var(--green); color: #000; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text2); }
+  .btn-danger { background: transparent; border: 1px solid #ef4444; color: #ef4444; }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+  /* Lista */
+  .campana-list { display: flex; flex-direction: column; gap: 12px; }
+  .campana-item {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 20px; display: flex; align-items: flex-start; gap: 14px;
+  }
+  .campana-item.inactiva { opacity: .55; }
+  .campana-color { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+  .campana-body { flex: 1; min-width: 0; }
+  .campana-nombre { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .campana-keyword { font-size: 12px; color: var(--text3); font-family: 'DM Mono', monospace; margin-bottom: 8px; white-space: pre-wrap; word-break: break-word; }
+  .campana-link { display: flex; align-items: center; gap: 8px; }
+  .campana-link input { font-size: 11px; color: var(--text3); flex: 1; cursor: text; }
+  .campana-stats { font-size: 11px; color: var(--text3); margin-top: 6px; }
+  .campana-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+  .badge-activa { background: #16a34a22; color: #16a34a; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 100px; }
+  .badge-inactiva { background: var(--bg2); color: var(--text3); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 100px; }
+
+  /* Modal editar */
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; align-items:center; justify-content:center; }
+  .modal-overlay.open { display:flex; }
+  .modal { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:28px; width:480px; max-width:95vw; display:flex; flex-direction:column; gap:14px; }
+  .modal h3 { font-size:15px; font-weight:700; margin:0 0 4px; }
+  .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:6px; }
+
+  .alert { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 4px; }
+  .alert-warning { background: #f59e0b22; color: #d97706; border: 1px solid #f59e0b44; }
+
+  @media (max-width: 640px) {
+    .form-row { grid-template-columns: 1fr; }
+    .page { padding: 16px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-header">
+    <span class="page-title">Campañas</span>
+  </div>
+
+  {% if messages %}
+    {% for msg in messages %}
+      <div class="alert alert-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+  {% endif %}
+
+  {% if not telefono_negocio %}
+  <div class="alert alert-warning">
+    ⚠ Para generar los links de WhatsApp necesitás configurar el <strong>Teléfono del negocio</strong> en <a href="{% url 'whatsapp:config' %}" style="color:inherit;text-decoration:underline">Configuración</a>.
+  </div>
+  {% endif %}
+
+  <!-- Nueva campaña -->
+  <div class="card">
+    <div class="card-title">Nueva campaña</div>
+    <form method="post" action="{% url 'whatsapp:campana_create' %}">
+      {% csrf_token %}
+      <div class="form-row" style="grid-template-columns: 1fr 2fr auto auto; margin-bottom: 10px;">
+        <div class="form-group">
+          <label>Nombre</label>
+          <input type="text" name="nombre" placeholder="Campaña Meta Oct" required>
+        </div>
+        <div class="form-group">
+          <label>Keyword (texto pre-cargado del ad)</label>
+          <input type="text" name="keyword" placeholder="Hola, vengo por el ad de Instagram" required>
+        </div>
+        <div class="form-group">
+          <label>Color</label>
+          <input type="color" name="color" value="#3b82f6">
+        </div>
+        <div class="form-group">
+          <label>&nbsp;</label>
+          <button type="submit" class="btn btn-green">Crear</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Lista campañas -->
+  <div class="card">
+    <div class="card-title">Campañas creadas</div>
+    {% if campanas %}
+    <div class="campana-list">
+      {% for c in campanas %}
+      <div class="campana-item {% if not c.activa %}inactiva{% endif %}">
+        <div class="campana-color" style="background: {{ c.color }}"></div>
+        <div class="campana-body">
+          <div class="campana-nombre">
+            {{ c.nombre }}
+            {% if c.activa %}<span class="badge-activa">Activa</span>{% else %}<span class="badge-inactiva">Pausada</span>{% endif %}
+          </div>
+          <div class="campana-keyword">{{ c.keyword }}</div>
+          {% if c._link %}
+          <div class="campana-link">
+            <input type="text" value="{{ c._link }}" readonly onclick="this.select()" title="Click para seleccionar">
+            <button class="btn btn-outline btn-sm" onclick="copyLink('{{ c._link }}', this)">Copiar link</button>
+          </div>
+          {% else %}
+          <div class="campana-stats" style="color:var(--text3)">Configurá el teléfono del negocio para ver el link</div>
+          {% endif %}
+          <div class="campana-stats">{{ c.conversaciones.count }} conversación{{ c.conversaciones.count|pluralize:"es" }} registrada{{ c.conversaciones.count|pluralize:"s" }}</div>
+        </div>
+        <div class="campana-actions">
+          <button class="btn btn-outline btn-sm" onclick="openEdit({{ c.pk }}, '{{ c.nombre|escapejs }}', `{{ c.keyword|escapejs }}`, '{{ c.color }}')">Editar</button>
+          <form method="post" action="{% url 'whatsapp:campana_toggle' c.pk %}" style="display:inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline btn-sm">{% if c.activa %}Pausar{% else %}Activar{% endif %}</button>
+          </form>
+          <form method="post" action="{% url 'whatsapp:campana_delete' c.pk %}" style="display:inline" onsubmit="return confirm('¿Eliminar campaña «{{ c.nombre }}»? Las conversaciones asociadas quedan sin campaña.')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p style="color:var(--text3);font-size:13px">Todavía no hay campañas. Creá la primera arriba.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Modal editar -->
+<div class="modal-overlay" id="edit-modal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal">
+    <h3>Editar campaña</h3>
+    <form method="post" id="edit-form">
+      {% csrf_token %}
+      <div class="form-group">
+        <label>Nombre</label>
+        <input type="text" name="nombre" id="edit-nombre" required>
+      </div>
+      <div class="form-group" style="margin-top:10px">
+        <label>Keyword</label>
+        <textarea name="keyword" id="edit-keyword" rows="3" required></textarea>
+      </div>
+      <div class="form-group" style="margin-top:10px">
+        <label>Color</label>
+        <input type="color" name="color" id="edit-color">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('edit-modal').classList.remove('open')">Cancelar</button>
+        <button type="submit" class="btn btn-green">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openEdit(pk, nombre, keyword, color) {
+  document.getElementById('edit-nombre').value = nombre;
+  document.getElementById('edit-keyword').value = keyword;
+  document.getElementById('edit-color').value = color;
+  document.getElementById('edit-form').action = `/whatsapp/campanas/${pk}/editar/`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function copyLink(link, btn) {
+  navigator.clipboard.writeText(link).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '¡Copiado!';
+    setTimeout(() => btn.textContent = orig, 1500);
+  });
+}
+</script>
+{% endblock %}

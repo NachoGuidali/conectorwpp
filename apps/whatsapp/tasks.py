@@ -103,6 +103,17 @@ def process_incoming_message(self, message_data: dict):
             timestamp=message_data.get('timestamp', timezone.now()),
         )
 
+        # Detectar campaña por keyword en el primer mensaje
+        if created:
+            from .models import Campana
+            contenido_msg = message_data.get('content', '').strip()
+            if contenido_msg:
+                for campana in Campana.objects.filter(activa=True):
+                    if campana.keyword.strip().lower() in contenido_msg.lower():
+                        Conversacion.objects.filter(pk=conv.pk).update(campana=campana)
+                        conv.campana = campana
+                        break
+
         # Avanzar etapa del contacto de "Nuevo" a "Contactado" al primer mensaje
         if contacto:
             from apps.contacts.pipeline import avanzar_etapa_si_nuevo

@@ -8,6 +8,10 @@ class ConfiguracionWhatsApp(models.Model):
     evolution_api_key = models.CharField(max_length=300, blank=True)
     evolution_instance_name = models.CharField(max_length=100, default='waply')
     webhook_token = models.CharField(max_length=200, blank=True)
+    telefono_negocio = models.CharField(
+        max_length=30, blank=True,
+        help_text='Número de WhatsApp del negocio con código de país, ej: +5491155667788. Se usa para generar links de campañas.',
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -29,11 +33,38 @@ class ConfiguracionWhatsApp(models.Model):
                     'evolution_api_key': obj.evolution_api_key,
                     'evolution_instance_name': obj.evolution_instance_name,
                     'webhook_token': obj.webhook_token,
+                    'telefono_negocio': obj.telefono_negocio,
                 }
             except cls.DoesNotExist:
                 config = {}
             cache.set('whatsapp_config', config, 300)
         return config.get(key, getattr(settings, key.upper(), ''))
+
+
+class Campana(models.Model):
+    nombre = models.CharField(max_length=150)
+    keyword = models.CharField(
+        max_length=500,
+        help_text='Texto pre-cargado que manda el usuario al clickear el ad. Se usa para detectar la campaña automáticamente.',
+    )
+    color = models.CharField(max_length=7, default='#3b82f6')
+    activa = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Campaña'
+        verbose_name_plural = 'Campañas'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.nombre
+
+    def whatsapp_link(self, telefono_negocio=''):
+        import urllib.parse
+        phone = telefono_negocio.lstrip('+').replace(' ', '')
+        if not phone:
+            return ''
+        return f'https://wa.me/{phone}?text={urllib.parse.quote(self.keyword)}'
 
 
 class Conversacion(models.Model):
@@ -80,6 +111,13 @@ class Conversacion(models.Model):
     bot_crm_activo = models.BooleanField(default=True)
     bot_n8n_activo = models.BooleanField(default=True)
     archivada = models.BooleanField(default=False, db_index=True)
+    campana = models.ForeignKey(
+        Campana,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='conversaciones',
+        verbose_name='Campaña',
+    )
     origen_conversacion = models.CharField(
         max_length=10, choices=ORIGEN_CHOICES,
         default=ORIGEN_ENTRANTE,

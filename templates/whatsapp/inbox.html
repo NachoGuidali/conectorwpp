@@ -462,7 +462,10 @@
          data-conv-id="{{ conv.pk }}">
         <div class="conv-avatar">{{ conv.get_display_name|slice:":1"|upper }}</div>
         <div class="conv-info">
-          <div class="conv-name">{{ conv.get_display_name }}</div>
+          <div class="conv-name">
+            {{ conv.get_display_name }}
+            {% if conv.campana %}<span style="display:inline-block;background:{{ conv.campana.color }}33;color:{{ conv.campana.color }};font-size:10px;font-weight:600;padding:1px 6px;border-radius:100px;margin-left:4px;vertical-align:middle">{{ conv.campana.nombre }}</span>{% endif %}
+          </div>
           <div class="conv-preview">
             {% if conv.agente %}{{ conv.agente.get_full_name|default:conv.agente.username }} · {% endif %}
             {{ last_msg.contenido|default:"Sin mensajes"|truncatechars:30 }}
@@ -511,6 +514,9 @@
           <span style="background:var(--info-bg2); color:var(--info-text2); font-size:9px; font-weight:700; padding:2px 6px; border-radius:3px; margin-left:6px; letter-spacing:.04em;">SALIENTE</span>
           {% else %}
           <span style="background:var(--selected-bg); color:var(--green); font-size:9px; font-weight:700; padding:2px 6px; border-radius:3px; margin-left:6px; letter-spacing:.04em;">ENTRANTE</span>
+          {% endif %}
+          {% if selected_conv.campana %}
+          <span style="background:{{ selected_conv.campana.color }}33;color:{{ selected_conv.campana.color }};font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;margin-left:6px;letter-spacing:.04em;">{{ selected_conv.campana.nombre|upper }}</span>
           {% endif %}
           {% if selected_conv.ventana_activa %}
           <span style="color: var(--green); margin-left: 6px;">● Ventana activa</span>
