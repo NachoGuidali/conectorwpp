@@ -53,10 +53,6 @@ class WebhookView(View):
         try:
             payload = json.loads(request.body)
             event = payload.get('event', '')
-            # LOG TEMPORAL: detectar si Evolution API manda campo referral de Meta ads
-            if event in ('messages.upsert', 'MESSAGES_UPSERT'):
-                import json as _json
-                logger.info('WEBHOOK_RAW event=%s payload=%s', event, _json.dumps(payload)[:2000])
             # Cache QR code delivered by webhook
             if event in ('QRCODE_UPDATED', 'qrcode.updated'):
                 from django.core.cache import cache
