@@ -398,7 +398,8 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
         ws.title = 'Conversaciones'
         headers = [
             'Nombre', 'Teléfono', 'Email contacto', 'Grupo', 'Etapa', 'Notas',
-            'Agente', 'Email agente', 'Estado', 'Archivada', 'Origen', 'Campaña', 'Último mensaje', 'Creado',
+            'Agente', 'Email agente', 'Estado', 'Archivada', 'Origen', 'Campaña',
+            'Viene de link WPP', 'Último mensaje', 'Creado',
         ] + [c.etiqueta for c in campos_custom]
         ws.append(headers)
 
@@ -435,6 +436,7 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
                 'Sí' if conv.archivada else 'No',
                 dict(Conversacion.ORIGEN_CHOICES).get(conv.origen_conversacion, conv.origen_conversacion),
                 conv.campana.nombre if conv.campana else '',
+                'Sí' if conv.ingreso_por_link else 'No',
                 conv.ultimo_mensaje_at.strftime('%d/%m/%Y %H:%M') if conv.ultimo_mensaje_at else '',
                 conv.created_at.strftime('%d/%m/%Y %H:%M') if conv.created_at else '',
             ] + custom_vals)
