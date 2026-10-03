@@ -103,16 +103,24 @@ def process_incoming_message(self, message_data: dict):
             timestamp=message_data.get('timestamp', timezone.now()),
         )
 
-        # Detectar campaña por keyword en el primer mensaje
+        # Detectar campaña y origen por link en el primer mensaje
         if created:
+            updates = {}
+            if message_data.get('entry_point_source') == 'click_to_chat_link':
+                updates['ingreso_por_link'] = True
+                conv.ingreso_por_link = True
+
             from .models import Campana
             contenido_msg = message_data.get('content', '').strip()
             if contenido_msg:
                 for campana in Campana.objects.filter(activa=True):
                     if campana.keyword.strip().lower() in contenido_msg.lower():
-                        Conversacion.objects.filter(pk=conv.pk).update(campana=campana)
+                        updates['campana'] = campana
                         conv.campana = campana
                         break
+
+            if updates:
+                Conversacion.objects.filter(pk=conv.pk).update(**updates)
 
         # Avanzar etapa del contacto de "Nuevo" a "Contactado" al primer mensaje
         if contacto:

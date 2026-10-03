@@ -122,6 +122,10 @@ class Conversacion(models.Model):
         max_length=10, choices=ORIGEN_CHOICES,
         default=ORIGEN_ENTRANTE,
     )
+    ingreso_por_link = models.BooleanField(
+        default=False,
+        help_text='El primer mensaje vino a través de un link de WhatsApp (wa.me).',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

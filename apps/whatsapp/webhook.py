@@ -41,6 +41,9 @@ def parse_incoming_webhook(payload: dict) -> list:
         media_id = _extract_media_id(msg, msg_type)
         media_url, media_mime, media_filename = _extract_media_fields(msg, msg_type)
 
+        context_info = data.get('contextInfo', {})
+        entry_point = context_info.get('entryPointConversionSource', '')
+
         messages_data.append({
             'from_phone': phone,
             'message_id': key.get('id', ''),
@@ -52,6 +55,7 @@ def parse_incoming_webhook(payload: dict) -> list:
             'media_filename': media_filename,
             'timestamp': timezone.now(),
             'contact_name': data.get('pushName', ''),
+            'entry_point_source': entry_point,
         })
     except Exception as e:
         logger.exception('Error parsing webhook payload: %s', e)

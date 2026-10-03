@@ -1161,9 +1161,11 @@ class CampanaListView(SupervisorRequiredMixin, View):
             {'campana': c, 'link': c.whatsapp_link(telefono_negocio)}
             for c in Campana.objects.all()
         ]
+        total_por_link = Conversacion.objects.filter(ingreso_por_link=True).count()
         return render(request, self.template_name, {
             'campanas_data': campanas_data,
             'telefono_negocio': telefono_negocio,
+            'total_por_link': total_por_link,
         })
 
 
