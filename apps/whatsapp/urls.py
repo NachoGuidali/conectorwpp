@@ -53,6 +53,7 @@ urlpatterns = [
     path('config/logout/', views.LogoutInstanceView.as_view(), name='logout_instance'),
 
     # API externa (para n8n)
+    path('api/stats/', views.APIStatsView.as_view(), name='api_stats'),
     path('api/enviar/', views.APIEnviarMensajeView.as_view(), name='api_enviar'),
     path('api/contacto/', views.APIContactoView.as_view(), name='api_contacto'),
     path('api/handoff/', views.APIHandoffView.as_view(), name='api_handoff'),

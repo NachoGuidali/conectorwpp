@@ -1510,3 +1510,71 @@ class APIHandoffView(View):
         )
         logger.info('Handoff bot→agente para conv %s', conv.pk)
         return JsonResponse({'ok': True, 'conversation_id': conv.pk, 'estado': 'pendiente'})
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class APIStatsView(View):
+    """
+    Endpoint JSON de métricas para dashboards externos (Looker Studio, n8n, etc.).
+    Autenticación: ?token=<webhook_token> (mismo token configurado en Configuración).
+    Filtros opcionales: ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+    """
+
+    def get(self, request):
+        token = request.GET.get('token', '').strip()
+        expected = ConfiguracionWhatsApp.get_setting('webhook_token')
+        if not expected or token != expected:
+            return JsonResponse({'error': 'Token inválido o no configurado'}, status=401)
+
+        qs = Conversacion.objects.filter(origen_conversacion=Conversacion.ORIGEN_ENTRANTE)
+
+        desde_str = request.GET.get('desde', '').strip()
+        hasta_str = request.GET.get('hasta', '').strip()
+
+        if desde_str:
+            try:
+                from datetime import date
+                date.fromisoformat(desde_str)
+                qs = qs.filter(created_at__date__gte=desde_str)
+            except ValueError:
+                return JsonResponse({'error': 'Formato inválido para "desde". Usar YYYY-MM-DD'}, status=400)
+
+        if hasta_str:
+            try:
+                from datetime import date
+                date.fromisoformat(hasta_str)
+                qs = qs.filter(created_at__date__lte=hasta_str)
+            except ValueError:
+                return JsonResponse({'error': 'Formato inválido para "hasta". Usar YYYY-MM-DD'}, status=400)
+
+        total = qs.count()
+        por_link = qs.filter(ingreso_por_link=True).count()
+        sin_campana = qs.filter(campana__isnull=True).count()
+
+        por_campana = []
+        for c in Campana.objects.order_by('nombre'):
+            c_qs = qs.filter(campana=c)
+            c_total = c_qs.count()
+            if c_total > 0:
+                por_campana.append({
+                    'id': c.pk,
+                    'nombre': c.nombre,
+                    'color': c.color,
+                    'total': c_total,
+                    'por_link_wpp': c_qs.filter(ingreso_por_link=True).count(),
+                })
+
+        return JsonResponse({
+            'periodo': {
+                'desde': desde_str or None,
+                'hasta': hasta_str or None,
+            },
+            'resumen': {
+                'total_conversaciones': total,
+                'con_campana': total - sin_campana,
+                'sin_campana': sin_campana,
+                'por_link_wpp': por_link,
+            },
+            'por_campana': por_campana,
+            'generado_at': timezone.now().isoformat(),
+        })
