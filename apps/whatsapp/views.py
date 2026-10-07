@@ -1549,20 +1549,30 @@ class APIStatsView(View):
 
         total = qs.count()
         por_link = qs.filter(ingreso_por_link=True).count()
-        sin_campana = qs.filter(campana__isnull=True).count()
+        sin_campana_count = qs.filter(campana__isnull=True).count()
 
-        por_campana = []
+        filas = []
         for c in Campana.objects.order_by('nombre'):
             c_qs = qs.filter(campana=c)
             c_total = c_qs.count()
             if c_total > 0:
-                por_campana.append({
-                    'id': c.pk,
-                    'nombre': c.nombre,
-                    'color': c.color,
+                filas.append({
+                    'campana': c.nombre,
                     'total': c_total,
                     'por_link_wpp': c_qs.filter(ingreso_por_link=True).count(),
                 })
+
+        sin_link = qs.filter(campana__isnull=True, ingreso_por_link=False).count()
+        if sin_campana_count > 0:
+            filas.append({
+                'campana': '(Sin campaña)',
+                'total': sin_campana_count,
+                'por_link_wpp': qs.filter(campana__isnull=True, ingreso_por_link=True).count(),
+            })
+
+        # ?formato=plano → array de filas para Looker Studio
+        if request.GET.get('formato') == 'plano':
+            return JsonResponse(filas, safe=False)
 
         return JsonResponse({
             'periodo': {
@@ -1571,10 +1581,10 @@ class APIStatsView(View):
             },
             'resumen': {
                 'total_conversaciones': total,
-                'con_campana': total - sin_campana,
-                'sin_campana': sin_campana,
+                'con_campana': total - sin_campana_count,
+                'sin_campana': sin_campana_count,
                 'por_link_wpp': por_link,
             },
-            'por_campana': por_campana,
+            'por_campana': filas,
             'generado_at': timezone.now().isoformat(),
         })
