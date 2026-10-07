@@ -392,6 +392,8 @@ class ConversacionesExportarView(LoginRequiredMixin, View):
             qs = qs.filter(campana__isnull=True)
         elif campana_filter.isdigit():
             qs = qs.filter(campana_id=int(campana_filter))
+        if request.GET.get('link_wpp', '').strip() == 'si':
+            qs = qs.filter(ingreso_por_link=True)
 
         wb = Workbook()
         ws = wb.active
