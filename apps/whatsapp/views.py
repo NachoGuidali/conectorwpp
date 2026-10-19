@@ -13,7 +13,7 @@ from django.views.generic import ListView
 from django.views.decorators.csrf import csrf_exempt
 
 from apps.users.models import User
-from .models import Conversacion, Mensaje, PlantillaHSM, ConfiguracionWhatsApp, Campana
+from .models import Conversacion, Mensaje, PlantillaHSM, ConfiguracionWhatsApp, Campana, GrupoAgentes
 from .tasks import process_incoming_message, send_whatsapp_message_task
 from .webhook import parse_incoming_webhook, verify_webhook_token
 
@@ -1587,4 +1587,66 @@ class APIStatsView(View):
             },
             'por_campana': filas,
             'generado_at': timezone.now().isoformat(),
+        })
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class APIReasignarView(View):
+    """
+    Reasigna una conversación a un grupo de agentes (asignación aleatoria).
+    Usado por n8n cuando el bot detecta el tipo de atención (ej: socio → autorizaciones).
+
+    POST { "phone": "+549...", "grupo": "autorizaciones" }
+    o    { "conversation_id": 123, "grupo": "autorizaciones" }
+    """
+
+    def post(self, request):
+        token = request.META.get('HTTP_X_API_TOKEN', '')
+        expected = ConfiguracionWhatsApp.get_setting('webhook_token')
+        if not expected or token != expected:
+            return JsonResponse({'ok': False, 'error': 'Token inválido'}, status=401)
+
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({'ok': False, 'error': 'JSON inválido'}, status=400)
+
+        grupo_nombre = data.get('grupo', '').strip()
+        if not grupo_nombre:
+            return JsonResponse({'ok': False, 'error': 'Falta el campo "grupo"'}, status=400)
+
+        try:
+            grupo = GrupoAgentes.objects.get(nombre__iexact=grupo_nombre)
+        except GrupoAgentes.DoesNotExist:
+            return JsonResponse({'ok': False, 'error': f'Grupo "{grupo_nombre}" no encontrado'}, status=404)
+
+        conv = None
+        conv_id = data.get('conversation_id')
+        phone = data.get('phone', '').strip()
+
+        if conv_id:
+            conv = Conversacion.objects.filter(pk=conv_id).first()
+        elif phone:
+            if not phone.startswith('+'):
+                phone = '+' + phone
+            conv = Conversacion.objects.filter(telefono=phone).first()
+
+        if not conv:
+            return JsonResponse({'ok': False, 'error': 'Conversación no encontrada'}, status=404)
+
+        agente = grupo.agente_aleatorio()
+        if not agente:
+            return JsonResponse({'ok': False, 'error': f'El grupo "{grupo_nombre}" no tiene agentes activos'}, status=400)
+
+        Conversacion.objects.filter(pk=conv.pk).update(
+            agente=agente,
+            estado=Conversacion.ESTADO_ABIERTA,
+            bot_n8n_activo=False,
+        )
+        logger.info('Conversación %s reasignada al grupo "%s" → agente %s', conv.pk, grupo_nombre, agente.username)
+        return JsonResponse({
+            'ok': True,
+            'conversation_id': conv.pk,
+            'grupo': grupo.nombre,
+            'agente_asignado': agente.username,
         })

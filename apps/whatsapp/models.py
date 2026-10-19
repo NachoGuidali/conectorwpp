@@ -41,6 +41,29 @@ class ConfiguracionWhatsApp(models.Model):
         return config.get(key, getattr(settings, key.upper(), ''))
 
 
+class GrupoAgentes(models.Model):
+    nombre = models.CharField(max_length=100, unique=True)
+    agentes = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name='grupos_whatsapp',
+    )
+
+    class Meta:
+        verbose_name = 'Grupo de agentes'
+        verbose_name_plural = 'Grupos de agentes'
+        ordering = ['nombre']
+
+    def __str__(self):
+        return self.nombre
+
+    def agente_aleatorio(self):
+        """Devuelve un agente activo del grupo al azar, o None si el grupo está vacío."""
+        import random
+        agentes = list(self.agentes.filter(is_active=True))
+        return random.choice(agentes) if agentes else None
+
+
 class Campana(models.Model):
     nombre = models.CharField(max_length=150)
     keyword = models.CharField(

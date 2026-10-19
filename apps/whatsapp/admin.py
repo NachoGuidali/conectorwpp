@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Conversacion, Mensaje, PlantillaHSM, ConfiguracionWhatsApp, LogAPIWhatsApp
+from .models import Conversacion, Mensaje, PlantillaHSM, ConfiguracionWhatsApp, LogAPIWhatsApp, GrupoAgentes
 
 @admin.register(ConfiguracionWhatsApp)
 class ConfigAdmin(admin.ModelAdmin):
@@ -19,6 +19,15 @@ class MensajeAdmin(admin.ModelAdmin):
 @admin.register(PlantillaHSM)
 class PlantillaAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'activa', 'created_at')
+
+@admin.register(GrupoAgentes)
+class GrupoAgentesAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'cantidad_agentes')
+    filter_horizontal = ('agentes',)
+
+    def cantidad_agentes(self, obj):
+        return obj.agentes.count()
+    cantidad_agentes.short_description = 'Agentes'
 
 @admin.register(LogAPIWhatsApp)
 class LogAdmin(admin.ModelAdmin):
