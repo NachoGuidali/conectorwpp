@@ -51,6 +51,13 @@ urlpatterns = [
     path('config/qr/', views.QRCodeView.as_view(), name='qr'),
     path('config/estado/', views.ConnectionStatusView.as_view(), name='connection_status'),
     path('config/logout/', views.LogoutInstanceView.as_view(), name='logout_instance'),
+    # Números de WhatsApp
+    path('config/numeros/nuevo/', views.NumeroWhatsAppCreateView.as_view(), name='numero_create'),
+    path('config/numeros/<int:pk>/editar/', views.NumeroWhatsAppUpdateView.as_view(), name='numero_update'),
+    path('config/numeros/<int:pk>/eliminar/', views.NumeroWhatsAppDeleteView.as_view(), name='numero_delete'),
+    path('config/numeros/<int:pk>/qr/', views.NumeroQRView.as_view(), name='numero_qr'),
+    path('config/numeros/<int:pk>/estado/', views.NumeroConnectionStatusView.as_view(), name='numero_estado'),
+    path('config/numeros/<int:pk>/logout/', views.NumeroLogoutView.as_view(), name='numero_logout'),
 
     # API externa (para n8n)
     path('api/stats/', views.APIStatsView.as_view(), name='api_stats'),

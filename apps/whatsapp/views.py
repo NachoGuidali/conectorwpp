@@ -1106,7 +1106,12 @@ class ConfigView(SupervisorRequiredMixin, View):
             state = get_connection_state()
         except Exception:
             state = 'error'
-        return render(request, self.template_name, {'config': config, 'connection_state': state})
+        numeros = NumeroWhatsApp.objects.all()
+        return render(request, self.template_name, {
+            'config': config,
+            'connection_state': state,
+            'numeros': numeros,
+        })
 
     def post(self, request):
         try:
@@ -1167,6 +1172,113 @@ class LogoutInstanceView(SupervisorRequiredMixin, View):
                 reset_instance()
             else:
                 logout_instance()
+            return JsonResponse({'ok': True})
+        except Exception as e:
+            return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+class NumeroWhatsAppCreateView(SupervisorRequiredMixin, View):
+    def post(self, request):
+        nombre = request.POST.get('nombre', '').strip()
+        instance_name = request.POST.get('instance_name', '').strip()
+        if not nombre or not instance_name:
+            messages.error(request, 'Nombre e instancia son obligatorios.')
+            return redirect('whatsapp:config')
+        numero = NumeroWhatsApp(
+            nombre=nombre,
+            instance_name=instance_name,
+            telefono=request.POST.get('telefono', '').strip(),
+            evolution_api_url=request.POST.get('evolution_api_url', '').strip(),
+            evolution_api_key=request.POST.get('evolution_api_key', '').strip(),
+            webhook_token=request.POST.get('webhook_token', '').strip(),
+            activo=request.POST.get('activo') == '1',
+            orden=int(request.POST.get('orden', 0) or 0),
+        )
+        try:
+            numero.save()
+            from .sender import ensure_instance_exists, setup_instance_webhook
+            from django.urls import reverse
+            webhook_url = request.build_absolute_uri(reverse('whatsapp:webhook'))
+            ensure_instance_exists(numero)
+            setup_instance_webhook(webhook_url, numero)
+            messages.success(request, f'Número "{nombre}" creado y webhook configurado.')
+        except Exception as e:
+            messages.error(request, f'Error al crear número: {e}')
+        return redirect('whatsapp:config')
+
+
+class NumeroWhatsAppUpdateView(SupervisorRequiredMixin, View):
+    def post(self, request, pk):
+        numero = get_object_or_404(NumeroWhatsApp, pk=pk)
+        numero.nombre = request.POST.get('nombre', numero.nombre).strip()
+        numero.instance_name = request.POST.get('instance_name', numero.instance_name).strip()
+        numero.telefono = request.POST.get('telefono', '').strip()
+        numero.evolution_api_url = request.POST.get('evolution_api_url', '').strip()
+        numero.evolution_api_key = request.POST.get('evolution_api_key', '').strip()
+        numero.webhook_token = request.POST.get('webhook_token', '').strip()
+        numero.activo = request.POST.get('activo') == '1'
+        numero.orden = int(request.POST.get('orden', numero.orden) or numero.orden)
+        try:
+            numero.save()
+            messages.success(request, f'Número "{numero.nombre}" actualizado.')
+        except Exception as e:
+            messages.error(request, f'Error: {e}')
+        return redirect('whatsapp:config')
+
+
+class NumeroWhatsAppDeleteView(SupervisorRequiredMixin, View):
+    def post(self, request, pk):
+        numero = get_object_or_404(NumeroWhatsApp, pk=pk)
+        if numero.conversaciones.exists():
+            return JsonResponse({'ok': False, 'error': 'Tiene conversaciones asociadas, no se puede eliminar.'}, status=400)
+        nombre = numero.nombre
+        numero.delete()
+        return JsonResponse({'ok': True, 'nombre': nombre})
+
+
+class NumeroQRView(SupervisorRequiredMixin, View):
+    def get(self, request, pk):
+        from .sender import get_connection_state, ensure_instance_exists, trigger_connect
+        from django.core.cache import cache
+        numero = get_object_or_404(NumeroWhatsApp, pk=pk)
+        try:
+            ensure_instance_exists(numero)
+            state = get_connection_state(numero)
+            cache_key = f'whatsapp_qr_code_{numero.pk}'
+            if state == 'open':
+                cache.delete(cache_key)
+                return JsonResponse({'connected': True, 'qr_base64': None})
+            qr_text = cache.get(f'whatsapp_qr_text_{numero.pk}') or cache.get('whatsapp_qr_text')
+            qr_b64 = cache.get(cache_key)
+            if not qr_text:
+                trigger_connect(numero)
+            return JsonResponse({'connected': False, 'qr_base64': qr_b64, 'qr_code': qr_text})
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+
+
+class NumeroConnectionStatusView(SupervisorRequiredMixin, View):
+    def get(self, request, pk):
+        from .sender import get_connection_state
+        numero = get_object_or_404(NumeroWhatsApp, pk=pk)
+        try:
+            state = get_connection_state(numero)
+            NumeroWhatsApp.objects.filter(pk=pk).update(estado_conexion=state)
+            return JsonResponse({'state': state, 'connected': state == 'open'})
+        except Exception as e:
+            return JsonResponse({'state': 'error', 'connected': False, 'detail': str(e)})
+
+
+class NumeroLogoutView(SupervisorRequiredMixin, View):
+    def post(self, request, pk):
+        numero = get_object_or_404(NumeroWhatsApp, pk=pk)
+        action = request.POST.get('action', 'logout')
+        from .sender import logout_instance, reset_instance
+        try:
+            if action == 'reset':
+                reset_instance(numero)
+            else:
+                logout_instance(numero)
             return JsonResponse({'ok': True})
         except Exception as e:
             return JsonResponse({'ok': False, 'error': str(e)}, status=500)
