@@ -41,7 +41,7 @@ def parse_incoming_webhook(payload: dict) -> list:
         media_id = _extract_media_id(msg, msg_type)
         media_url, media_mime, media_filename = _extract_media_fields(msg, msg_type)
 
-        context_info = data.get('contextInfo', {})
+        context_info = data.get('contextInfo') or {}
         entry_point = context_info.get('entryPointConversionSource', '')
 
         messages_data.append({
