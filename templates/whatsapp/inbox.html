@@ -438,18 +438,27 @@
         {% if archivadas %}<input type="hidden" name="archivadas" value="1">{% endif %}
         <input type="text" name="q" value="{{ q }}" placeholder="Buscar..." class="search-input" onchange="this.form.submit()">
         <div class="filter-row">
-          <a href="?{% if q %}q={{ q }}&{% endif %}no_leidos=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}"
+          <a href="?{% if q %}q={{ q }}&{% endif %}no_leidos=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}"
              class="filter-btn {% if solo_no_leidos %}on{% endif %}">Sin leer</a>
           {% if user.is_supervisor %}
-          <a href="?{% if q %}q={{ q }}&{% endif %}sin_agente=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}"
+          <a href="?{% if q %}q={{ q }}&{% endif %}sin_agente=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}"
              class="filter-btn {% if sin_agente %}on{% endif %}">Sin agente</a>
           {% endif %}
-          <a href="?{% if q %}q={{ q }}&{% endif %}sin_contacto=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}"
+          <a href="?{% if q %}q={{ q }}&{% endif %}sin_contacto=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}"
              class="filter-btn {% if sin_contacto %}on{% endif %}">Sin contacto</a>
           <a href="?{% if selected_conv %}conv={{ selected_conv.pk }}{% endif %}"
-             class="filter-btn {% if not solo_no_leidos and not sin_agente and not sin_contacto and not archivadas %}on{% endif %}">Todos</a>
-          <a href="?archivadas=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}"
+             class="filter-btn {% if not solo_no_leidos and not sin_agente and not sin_contacto and not archivadas and not campana_id %}on{% endif %}">Todos</a>
+          <a href="?archivadas=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}"
              class="filter-btn {% if archivadas %}on{% endif %}">Archivadas</a>
+          {% if campanas %}
+          <select onchange="filtrarCampana(this.value)" style="font-size:12px; padding:4px 8px; border-radius:var(--radius-sm); background:var(--bg{% if campana_id %}4{% else %}2{% endif %}); border:1px solid var(--border); color:var(--text); cursor:pointer; font-family:inherit;">
+            <option value="">Campaña: todas</option>
+            <option value="ninguna" {% if campana_id == 'ninguna' %}selected{% endif %}>Sin campaña</option>
+            {% for c in campanas %}
+            <option value="{{ c.pk }}" {% if campana_id == c.pk|stringformat:'s' %}selected{% endif %}>{{ c.nombre }}</option>
+            {% endfor %}
+          </select>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -457,7 +466,7 @@
     <div class="conv-list" id="conv-list">
       {% for conv in conversaciones %}
       {% with last_msg=conv.mensajes.last %}
-      <a href="?conv={{ conv.pk }}{% if q %}&q={{ q }}{% endif %}{% if solo_no_leidos %}&no_leidos=1{% endif %}{% if sin_agente %}&sin_agente=1{% endif %}{% if archivadas %}&archivadas=1{% endif %}"
+      <a href="?conv={{ conv.pk }}{% if q %}&q={{ q }}{% endif %}{% if solo_no_leidos %}&no_leidos=1{% endif %}{% if sin_agente %}&sin_agente=1{% endif %}{% if archivadas %}&archivadas=1{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}"
          class="conv-item {% if selected_conv.pk == conv.pk %}selected{% endif %}"
          data-conv-id="{{ conv.pk }}">
         <div class="conv-avatar">{{ conv.get_display_name|slice:":1"|upper }}</div>
@@ -1524,6 +1533,17 @@ async function sendTemplate() {
   }
   document.body.appendChild(form);
   form.submit();
+}
+
+function filtrarCampana(val) {
+  const url = new URL(window.location.href);
+  if (val) {
+    url.searchParams.set('campana', val);
+  } else {
+    url.searchParams.delete('campana');
+  }
+  url.searchParams.delete('conv');
+  window.location.href = url.toString();
 }
 </script>
 {% endblock %}

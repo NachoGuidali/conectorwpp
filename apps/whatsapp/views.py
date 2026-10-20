@@ -125,6 +125,13 @@ class InboxView(LoginRequiredMixin, View):
         if sin_contacto:
             qs = qs.filter(contacto__isnull=True)
 
+        campana_id = request.GET.get('campana', '').strip()
+        if campana_id:
+            if campana_id == 'ninguna':
+                qs = qs.filter(campana__isnull=True)
+            else:
+                qs = qs.filter(campana_id=campana_id)
+
         archivadas = request.GET.get('archivadas', '').strip()
         if archivadas:
             # Mostrar archivadas en lugar de activas
@@ -133,6 +140,11 @@ class InboxView(LoginRequiredMixin, View):
                 qs = qs.filter(agente=request.user)
             if q:
                 qs = qs.filter(Q(nombre_contacto__icontains=q) | Q(telefono__icontains=q))
+            if campana_id:
+                if campana_id == 'ninguna':
+                    qs = qs.filter(campana__isnull=True)
+                else:
+                    qs = qs.filter(campana_id=campana_id)
             qs = qs.order_by('-ultimo_mensaje_at')
 
         conversaciones = list(qs[:100])
@@ -175,6 +187,7 @@ class InboxView(LoginRequiredMixin, View):
             except (Conversacion.DoesNotExist, ValueError):
                 selected_conv = None
 
+        campanas = Campana.objects.filter(activa=True).order_by('nombre')
         return render(request, self.template_name, {
             'conversaciones': conversaciones,
             'unread_total': unread_total,
@@ -183,6 +196,8 @@ class InboxView(LoginRequiredMixin, View):
             'solo_no_leidos': solo_no_leidos,
             'sin_contacto': sin_contacto,
             'archivadas': archivadas,
+            'campana_id': campana_id,
+            'campanas': campanas,
             'selected_conv': selected_conv,
             'mensajes': mensajes,
             'plantillas': plantillas,
