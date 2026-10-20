@@ -15,16 +15,22 @@ def _cfg(key):
     return ConfiguracionWhatsApp.get_setting(key)
 
 
-def _evo_headers():
-    return {'apikey': _cfg('evolution_api_key'), 'Content-Type': 'application/json'}
+def _evo_headers(numero=None):
+    key = numero.get_api_key() if numero else _cfg('evolution_api_key')
+    return {'apikey': key, 'Content-Type': 'application/json'}
 
 
-def _evo_url(path: str) -> str:
-    base = _cfg('evolution_api_url') or getattr(settings, 'EVOLUTION_API_URL', 'http://evolution-api:8080')
+def _evo_url(path: str, numero=None) -> str:
+    if numero:
+        base = numero.get_api_url()
+    else:
+        base = _cfg('evolution_api_url') or getattr(settings, 'EVOLUTION_API_URL', 'http://evolution-api:8080')
     return f'{base.rstrip("/")}{path}'
 
 
-def _instance() -> str:
+def _instance(numero=None) -> str:
+    if numero:
+        return numero.instance_name
     return _cfg('evolution_instance_name') or getattr(settings, 'EVOLUTION_INSTANCE_NAME', 'waply')
 
 
@@ -51,13 +57,13 @@ def _extract_message_id(data: dict) -> str:
     return data.get('key', {}).get('id', '')
 
 
-def send_text_message(to: str, body: str) -> dict:
-    url = _evo_url(f'/message/sendText/{_instance()}')
+def send_text_message(to: str, body: str, numero=None) -> dict:
+    url = _evo_url(f'/message/sendText/{_instance(numero)}', numero)
     payload = {'number': _normalize_phone(to), 'text': body}
     start = time.monotonic()
     response = None
     try:
-        response = requests.post(url, json=payload, headers=_evo_headers(), timeout=15)
+        response = requests.post(url, json=payload, headers=_evo_headers(numero), timeout=15)
         response.raise_for_status()
         return {'id': _extract_message_id(response.json())}
     except requests.RequestException as e:
@@ -78,8 +84,8 @@ def get_mediatype(mime: str) -> str:
     return 'document'
 
 
-def send_media_message(to: str, media_url: str, mediatype: str, filename: str = '', caption: str = '') -> dict:
-    url = _evo_url(f'/message/sendMedia/{_instance()}')
+def send_media_message(to: str, media_url: str, mediatype: str, filename: str = '', caption: str = '', numero=None) -> dict:
+    url = _evo_url(f'/message/sendMedia/{_instance(numero)}', numero)
     payload = {'number': _normalize_phone(to), 'mediatype': mediatype, 'media': media_url}
     if caption:
         payload['caption'] = caption
@@ -88,7 +94,7 @@ def send_media_message(to: str, media_url: str, mediatype: str, filename: str = 
     start = time.monotonic()
     response = None
     try:
-        response = requests.post(url, json=payload, headers=_evo_headers(), timeout=30)
+        response = requests.post(url, json=payload, headers=_evo_headers(numero), timeout=30)
         if not response.ok:
             logger.error('sendMedia API error %s: %s', response.status_code, response.text[:500])
         response.raise_for_status()
@@ -100,16 +106,16 @@ def send_media_message(to: str, media_url: str, mediatype: str, filename: str = 
         _log_request(url, 'POST', {**payload, 'media': payload['media'][:80] + '...' if len(str(payload.get('media', ''))) > 80 else payload.get('media', '')}, response, int((time.monotonic() - start) * 1000))
 
 
-def send_whatsapp_audio(to: str, media_data: str, filename: str = '') -> dict:
+def send_whatsapp_audio(to: str, media_data: str, filename: str = '', numero=None) -> dict:
     """Envía una nota de voz (PTT) usando el endpoint dedicado de Evolution API."""
-    url = _evo_url(f'/message/sendWhatsAppAudio/{_instance()}')
+    url = _evo_url(f'/message/sendWhatsAppAudio/{_instance(numero)}', numero)
     payload = {'number': _normalize_phone(to), 'audio': media_data}
     if filename:
         payload['fileName'] = filename
     start = time.monotonic()
     response = None
     try:
-        response = requests.post(url, json=payload, headers=_evo_headers(), timeout=30)
+        response = requests.post(url, json=payload, headers=_evo_headers(numero), timeout=30)
         if not response.ok:
             logger.error('sendWhatsAppAudio API error %s: %s', response.status_code, response.text[:500])
         response.raise_for_status()
@@ -122,8 +128,8 @@ def send_whatsapp_audio(to: str, media_data: str, filename: str = '') -> dict:
         _log_request(url, 'POST', {**payload, 'audio': logged_audio}, response, int((time.monotonic() - start) * 1000))
 
 
-def send_interactive_message(to: str, body_text: str, buttons: list, header_text: str = '', footer_text: str = '') -> dict:
-    url = _evo_url(f'/message/sendButtons/{_instance()}')
+def send_interactive_message(to: str, body_text: str, buttons: list, header_text: str = '', footer_text: str = '', numero=None) -> dict:
+    url = _evo_url(f'/message/sendButtons/{_instance(numero)}', numero)
     payload = {
         'number': _normalize_phone(to),
         'title': header_text or '',
@@ -134,7 +140,7 @@ def send_interactive_message(to: str, body_text: str, buttons: list, header_text
     start = time.monotonic()
     response = None
     try:
-        response = requests.post(url, json=payload, headers=_evo_headers(), timeout=15)
+        response = requests.post(url, json=payload, headers=_evo_headers(numero), timeout=15)
         response.raise_for_status()
         return {'id': _extract_message_id(response.json())}
     except requests.RequestException as e:
@@ -144,13 +150,13 @@ def send_interactive_message(to: str, body_text: str, buttons: list, header_text
         _log_request(url, 'POST', payload, response, int((time.monotonic() - start) * 1000))
 
 
-def delete_message(message_id: str, phone: str) -> bool:
-    url = _evo_url(f'/chat/deleteMessage/{_instance()}')
+def delete_message(message_id: str, phone: str, numero=None) -> bool:
+    url = _evo_url(f'/chat/deleteMessage/{_instance(numero)}', numero)
     payload = {'id': message_id, 'phone': _normalize_phone(phone), 'fromMe': True, 'everyone': True}
     start = time.monotonic()
     response = None
     try:
-        response = requests.delete(url, json=payload, headers=_evo_headers(), timeout=10)
+        response = requests.delete(url, json=payload, headers=_evo_headers(numero), timeout=10)
         response.raise_for_status()
         return True
     except requests.RequestException as e:
@@ -160,10 +166,10 @@ def delete_message(message_id: str, phone: str) -> bool:
         _log_request(url, 'DELETE', payload, response, int((time.monotonic() - start) * 1000))
 
 
-def get_connection_state() -> str:
-    url = _evo_url(f'/instance/connectionState/{_instance()}')
+def get_connection_state(numero=None) -> str:
+    url = _evo_url(f'/instance/connectionState/{_instance(numero)}', numero)
     try:
-        r = requests.get(url, headers=_evo_headers(), timeout=10)
+        r = requests.get(url, headers=_evo_headers(numero), timeout=10)
         r.raise_for_status()
         data = r.json()
         # v2.2.3: {"instance": {"instanceName": "...", "state": "open"}}
@@ -177,34 +183,35 @@ def get_connection_state() -> str:
         return 'error'
 
 
-def trigger_connect() -> None:
+def trigger_connect(numero=None) -> None:
     """Trigger Baileys connection once. QR arrives via QRCODE_UPDATED webhook."""
     try:
-        requests.get(_evo_url(f'/instance/connect/{_instance()}'),
-                     headers=_evo_headers(), timeout=10)
+        requests.get(_evo_url(f'/instance/connect/{_instance(numero)}', numero),
+                     headers=_evo_headers(numero), timeout=10)
     except Exception as e:
         logger.error('Error triggering connect: %s', e)
 
 
-def get_qr_code(force: bool = False) -> str | None:
+def get_qr_code(force: bool = False, numero=None) -> str | None:
     from django.core.cache import cache
-    state = get_connection_state()
+    state = get_connection_state(numero)
     if state == 'open' and not force:
         return None
-    trigger_connect()
-    return cache.get('whatsapp_qr_code')
+    trigger_connect(numero)
+    cache_key = f'whatsapp_qr_code_{numero.pk}' if numero else 'whatsapp_qr_code'
+    return cache.get(cache_key)
 
 
-def setup_instance_webhook(webhook_url: str) -> bool:
-    url = _evo_url(f'/webhook/set/{_instance()}')
-    webhook_token = _cfg('webhook_token') or ''
+def setup_instance_webhook(webhook_url: str, numero=None) -> bool:
+    url = _evo_url(f'/webhook/set/{_instance(numero)}', numero)
+    webhook_token = (numero.webhook_token if numero else None) or _cfg('webhook_token') or ''
     payload = {'webhook': {
         'enabled': True, 'url': webhook_url, 'webhook_by_events': False, 'webhook_base64': False,
         'events': ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
         'headers': {'apikey': webhook_token} if webhook_token else {},
     }}
     try:
-        r = requests.post(url, json=payload, headers=_evo_headers(), timeout=10)
+        r = requests.post(url, json=payload, headers=_evo_headers(numero), timeout=10)
         r.raise_for_status()
         logger.info('Webhook configured: %s', webhook_url)
         return True
@@ -213,10 +220,10 @@ def setup_instance_webhook(webhook_url: str) -> bool:
         return False
 
 
-def ensure_instance_exists():
-    instance = _instance()
+def ensure_instance_exists(numero=None):
+    instance = _instance(numero)
     try:
-        r = requests.get(_evo_url('/instance/fetchInstances'), headers=_evo_headers(), timeout=10)
+        r = requests.get(_evo_url('/instance/fetchInstances', numero), headers=_evo_headers(numero), timeout=10)
         if r.ok:
             instances = r.json()
             for i in (instances if isinstance(instances, list) else []):
@@ -234,9 +241,9 @@ def ensure_instance_exists():
     ]:
         try:
             r = requests.post(
-                _evo_url('/instance/create'),
+                _evo_url('/instance/create', numero),
                 json=payload,
-                headers=_evo_headers(), timeout=15,
+                headers=_evo_headers(numero), timeout=15,
             )
             if r.ok or r.status_code == 403:
                 logger.info('Evolution API instance "%s" ready', instance)
@@ -245,42 +252,42 @@ def ensure_instance_exists():
             logger.error('Error creating instance: %s', e)
 
 
-def logout_instance():
-    instance = _instance()
+def logout_instance(numero=None):
+    instance = _instance(numero)
     try:
-        r = requests.delete(_evo_url(f'/instance/logout/{instance}'), headers=_evo_headers(), timeout=10)
+        r = requests.delete(_evo_url(f'/instance/logout/{instance}', numero), headers=_evo_headers(numero), timeout=10)
         if r.ok:
             return
     except Exception:
         pass
-    requests.post(_evo_url(f'/instance/restart/{instance}'), headers=_evo_headers(), timeout=10)
+    requests.post(_evo_url(f'/instance/restart/{instance}', numero), headers=_evo_headers(numero), timeout=10)
 
 
-def reset_instance():
+def reset_instance(numero=None):
     import time as _time
-    instance = _instance()
+    instance = _instance(numero)
     try:
-        requests.delete(_evo_url(f'/instance/logout/{instance}'), headers=_evo_headers(), timeout=10)
+        requests.delete(_evo_url(f'/instance/logout/{instance}', numero), headers=_evo_headers(numero), timeout=10)
     except Exception:
         pass
     _time.sleep(1)
     try:
-        requests.post(_evo_url(f'/instance/restart/{instance}'), headers=_evo_headers(), timeout=10)
+        requests.post(_evo_url(f'/instance/restart/{instance}', numero), headers=_evo_headers(numero), timeout=10)
     except Exception:
         pass
 
 
-def download_and_save_media(message_id: str, conv_pk: int, filename: str = '') -> str:
+def download_and_save_media(message_id: str, conv_pk: int, filename: str = '', numero=None) -> str:
     """
     Descarga el archivo de media de Evolution API (desencriptado) y lo guarda
     localmente. Devuelve la URL local o '' si falla.
     """
     try:
-        url = _evo_url(f'/chat/getBase64FromMediaMessage/{_instance()}')
+        url = _evo_url(f'/chat/getBase64FromMediaMessage/{_instance(numero)}', numero)
         r = requests.post(
             url,
             json={'message': {'key': {'id': message_id}}},
-            headers=_evo_headers(),
+            headers=_evo_headers(numero),
             timeout=30,
         )
         if not r.ok:

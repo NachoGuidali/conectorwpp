@@ -41,6 +41,44 @@ class ConfiguracionWhatsApp(models.Model):
         return config.get(key, getattr(settings, key.upper(), ''))
 
 
+class NumeroWhatsApp(models.Model):
+    ESTADO_OPEN = 'open'
+    ESTADO_CLOSE = 'close'
+    ESTADO_CONNECTING = 'connecting'
+    ESTADO_CHOICES = [
+        (ESTADO_OPEN, 'Conectado'),
+        (ESTADO_CLOSE, 'Desconectado'),
+        (ESTADO_CONNECTING, 'Conectando'),
+    ]
+
+    nombre = models.CharField(max_length=100, help_text='Ej: "Ventas", "Soporte", "Principal".')
+    instance_name = models.SlugField(max_length=100, unique=True, help_text='Nombre de instancia en Evolution API.')
+    telefono = models.CharField(max_length=20, blank=True, help_text='Número del negocio con código de país.')
+    evolution_api_url = models.CharField(max_length=300, blank=True, help_text='Vacío = usar el global del .env.')
+    evolution_api_key = models.CharField(max_length=300, blank=True, help_text='Vacío = usar el global del .env.')
+    webhook_token = models.CharField(max_length=200, blank=True)
+    activo = models.BooleanField(default=True)
+    orden = models.PositiveSmallIntegerField(default=0)
+    estado_conexion = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_CLOSE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Número de WhatsApp'
+        verbose_name_plural = 'Números de WhatsApp'
+        ordering = ['orden', 'nombre']
+
+    def __str__(self):
+        return f'{self.nombre} ({self.telefono or self.instance_name})'
+
+    def get_api_url(self) -> str:
+        from django.conf import settings as dj
+        return (self.evolution_api_url or getattr(dj, 'EVOLUTION_API_URL', 'http://evolution-api:8080')).rstrip('/')
+
+    def get_api_key(self) -> str:
+        from django.conf import settings as dj
+        return self.evolution_api_key or getattr(dj, 'EVOLUTION_API_KEY', '')
+
+
 class GrupoAgentes(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
     agentes = models.ManyToManyField(
@@ -109,7 +147,13 @@ class Conversacion(models.Model):
         (ORIGEN_SALIENTE, 'Saliente'),
     ]
 
-    telefono = models.CharField(max_length=20, unique=True, db_index=True)
+    numero = models.ForeignKey(
+        NumeroWhatsApp,
+        on_delete=models.PROTECT,
+        related_name='conversaciones',
+        verbose_name='Número de WhatsApp',
+    )
+    telefono = models.CharField(max_length=20, db_index=True)
     nombre_contacto = models.CharField(max_length=200, blank=True)
     contacto = models.ForeignKey(
         'contacts.Contacto',
@@ -155,6 +199,7 @@ class Conversacion(models.Model):
         verbose_name = 'Conversación'
         verbose_name_plural = 'Conversaciones'
         ordering = ['-ultimo_mensaje_at']
+        unique_together = [('numero', 'telefono')]
 
     def __str__(self):
         return self.nombre_contacto or self.telefono

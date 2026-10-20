@@ -18,8 +18,8 @@ def auto_asignar_agente(conv) -> bool:
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
-def process_incoming_message(self, message_data: dict):
-    from .models import Conversacion, Mensaje
+def process_incoming_message(self, message_data: dict, numero_id: int = None):
+    from .models import Conversacion, Mensaje, NumeroWhatsApp
 
     phone = message_data.get('from_phone', '')
     if not phone:
@@ -28,6 +28,15 @@ def process_incoming_message(self, message_data: dict):
         phone = '+' + phone
 
     try:
+        numero = None
+        if numero_id:
+            numero = NumeroWhatsApp.objects.filter(pk=numero_id).first()
+        if numero is None:
+            numero = NumeroWhatsApp.objects.filter(activo=True).order_by('orden').first()
+        if numero is None:
+            logger.error('No hay NumeroWhatsApp activo para procesar mensaje de %s', phone)
+            return
+
         # Buscar o crear contacto automáticamente al primer mensaje
         from apps.contacts.models import Contacto
         contact_name = message_data.get('contact_name', '')
@@ -43,6 +52,7 @@ def process_incoming_message(self, message_data: dict):
 
         conv, created = Conversacion.objects.get_or_create(
             telefono=phone,
+            numero=numero,
             defaults={
                 'nombre_contacto': contact_name,
                 'contacto': contacto,
@@ -85,6 +95,7 @@ def process_incoming_message(self, message_data: dict):
             local_url = download_and_save_media(
                 message_id, conv.pk,
                 filename=message_data.get('media_filename', ''),
+                numero=numero,
             )
             if local_url:
                 media_url = local_url
@@ -239,8 +250,8 @@ def send_whatsapp_message_task(self, mensaje_id: int):
     from .models import Mensaje
     from .sender import send_text_message
     try:
-        msg = Mensaje.objects.select_related('conversacion').get(pk=mensaje_id)
-        result = send_text_message(msg.conversacion.telefono, msg.contenido)
+        msg = Mensaje.objects.select_related('conversacion__numero').get(pk=mensaje_id)
+        result = send_text_message(msg.conversacion.telefono, msg.contenido, numero=msg.conversacion.numero)
         Mensaje.objects.filter(pk=mensaje_id).update(
             whatsapp_message_id=result.get('id', ''),
             status=Mensaje.STATUS_ENVIADO,

@@ -13,7 +13,7 @@ from django.views.generic import ListView
 from django.views.decorators.csrf import csrf_exempt
 
 from apps.users.models import User
-from .models import Conversacion, Mensaje, PlantillaHSM, ConfiguracionWhatsApp, Campana, GrupoAgentes
+from .models import Conversacion, Mensaje, PlantillaHSM, ConfiguracionWhatsApp, Campana, GrupoAgentes, NumeroWhatsApp
 from .tasks import process_incoming_message, send_whatsapp_message_task
 from .webhook import parse_incoming_webhook, verify_webhook_token
 
@@ -44,14 +44,27 @@ class WebhookView(View):
         return HttpResponse('OK', status=200)
 
     def post(self, request):
-        token = request.headers.get('apikey', '')
-        configured_token = ConfiguracionWhatsApp.get_setting('webhook_token')
-        # Accept both the configured token AND the Evolution API instance token
-        evo_api_key = ConfiguracionWhatsApp.get_setting('evolution_api_key')
-        if not verify_webhook_token(token, configured_token) and token != evo_api_key:
-            return HttpResponse('Forbidden', status=403)
         try:
             payload = json.loads(request.body)
+        except Exception:
+            return HttpResponse('Bad Request', status=400)
+
+        # Identificar el NumeroWhatsApp por instance_name del payload
+        instance_name = payload.get('instance', '')
+        numero = None
+        if instance_name:
+            numero = NumeroWhatsApp.objects.filter(instance_name=instance_name, activo=True).first()
+        if numero is None:
+            numero = NumeroWhatsApp.objects.filter(activo=True).order_by('orden').first()
+
+        # Verificar token contra el numero o el global
+        token = request.headers.get('apikey', '')
+        expected_token = (numero.webhook_token if numero else None) or ConfiguracionWhatsApp.get_setting('webhook_token')
+        evo_api_key = (numero.get_api_key() if numero else None) or ConfiguracionWhatsApp.get_setting('evolution_api_key')
+        if not verify_webhook_token(token, expected_token) and token != evo_api_key:
+            return HttpResponse('Forbidden', status=403)
+
+        try:
             event = payload.get('event', '')
             # Cache QR code delivered by webhook
             if event in ('QRCODE_UPDATED', 'qrcode.updated'):
@@ -63,13 +76,15 @@ class WebhookView(View):
                 if qr_b64 and ',' in qr_b64:
                     qr_b64 = qr_b64.split(',', 1)[1]
                 if qr_code:
-                    cache.set('whatsapp_qr_code', qr_b64, timeout=55)
+                    cache_key = f'whatsapp_qr_code_{numero.pk}' if numero else 'whatsapp_qr_code'
+                    cache.set(cache_key, qr_b64, timeout=55)
+                    cache.set('whatsapp_qr_code', qr_b64, timeout=55)  # backward compat
                     cache.set('whatsapp_qr_text', qr_code, timeout=55)
                     logger.info('QR code cached from webhook (code len=%d)', len(qr_code))
                 return HttpResponse('OK', status=200)
             messages_data = parse_incoming_webhook(payload)
             for msg_data in messages_data:
-                process_incoming_message.delay(msg_data)
+                process_incoming_message.delay(msg_data, numero_id=numero.pk if numero else None)
         except Exception as e:
             logger.exception('Webhook error: %s', e)
         return HttpResponse('OK', status=200)
@@ -209,7 +224,7 @@ class InboxView(LoginRequiredMixin, View):
                 text = plantilla.preview(vals if any(vals) else None)
                 try:
                     from .sender import send_text_message
-                    result = send_text_message(conv.telefono, text)
+                    result = send_text_message(conv.telefono, text, numero=conv.numero)
                     Mensaje.objects.create(
                         conversacion=conv, direccion=Mensaje.DIR_SALIENTE,
                         tipo=Mensaje.TIPO_PLANTILLA, contenido=text,
@@ -751,12 +766,17 @@ def _abrir_conversacion_saliente(user, telefono, nombre='', contacto=None, desar
             contacto.nombre = nombre
             contacto.save(update_fields=['nombre'])
 
+    numero = NumeroWhatsApp.objects.filter(activo=True).order_by('orden').first()
+    lookup = {'telefono': telefono}
+    if numero:
+        lookup['numero'] = numero
     conv, created = Conversacion.objects.get_or_create(
-        telefono=telefono,
+        **lookup,
         defaults={
             'nombre_contacto': contacto.nombre or telefono,
             'contacto': contacto,
             'origen_conversacion': Conversacion.ORIGEN_SALIENTE,
+            **(({'numero': numero}) if numero else {}),
         },
     )
     update_fields = []
@@ -881,7 +901,7 @@ class BorrarMensajeView(LoginRequiredMixin, View):
             return JsonResponse({'ok': True})
         from .sender import delete_message
         if msg.whatsapp_message_id:
-            delete_message(msg.whatsapp_message_id, conv.telefono)
+            delete_message(msg.whatsapp_message_id, conv.telefono, numero=conv.numero)
         Mensaje.objects.filter(pk=pk).update(borrado=True, contenido='')
         return JsonResponse({'ok': True})
 
@@ -945,9 +965,9 @@ class EnviarMediaView(LoginRequiredMixin, View):
             send_fns = []
             if is_ptt and mediatype == 'audio':
                 from .sender import send_whatsapp_audio
-                send_fns.append(lambda data: send_whatsapp_audio(conv.telefono, data, filename=filename))
+                send_fns.append(lambda data: send_whatsapp_audio(conv.telefono, data, filename=filename, numero=conv.numero))
             send_fns.append(lambda data: send_media_message(
-                conv.telefono, data, mediatype, filename=filename, caption=caption,
+                conv.telefono, data, mediatype, filename=filename, caption=caption, numero=conv.numero,
             ))
 
             result = None
@@ -1236,13 +1256,13 @@ class APIEnviarMensajeView(View):
         if not phone.startswith('+'):
             phone = '+' + phone
         try:
+            conv = _abrir_conversacion_saliente(None, phone, desarchivar=False)
             if media_url:
-                result = send_media_message(phone, media_url, media_type, caption=message)
+                result = send_media_message(phone, media_url, media_type, caption=message, numero=conv.numero)
                 tipo = Mensaje.TIPO_IMAGEN
             else:
-                result = send_text_message(phone, message)
+                result = send_text_message(phone, message, numero=conv.numero)
                 tipo = Mensaje.TIPO_TEXTO
-            conv = _abrir_conversacion_saliente(None, phone, desarchivar=False)
             msg = Mensaje.objects.create(
                 conversacion=conv, direccion=Mensaje.DIR_SALIENTE, tipo=tipo,
                 contenido=message, media_url=media_url,
