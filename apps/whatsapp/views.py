@@ -336,8 +336,17 @@ class DashboardSupervisorView(LoginRequiredMixin, View):
         from django.db.models import Count, Q as Qm
         User = get_user_model()
 
+        grupo_id = request.GET.get('grupo', '').strip()
+        grupo_sel = None
+        if grupo_id and grupo_id.isdigit():
+            grupo_sel = GrupoAgentes.objects.filter(pk=grupo_id).first()
+
+        agentes_qs = User.objects.filter(rol=User.ROL_AGENTE)
+        if grupo_sel:
+            agentes_qs = agentes_qs.filter(grupos_whatsapp=grupo_sel)
+
         agentes = (
-            User.objects.filter(rol=User.ROL_AGENTE)
+            agentes_qs
             .annotate(
                 total=Count('conversaciones', filter=Qm(conversaciones__archivada=False)),
                 bot=Count('conversaciones', filter=Qm(conversaciones__archivada=False, conversaciones__bot_n8n_activo=True)),
@@ -349,12 +358,16 @@ class DashboardSupervisorView(LoginRequiredMixin, View):
             .order_by('-en_turno', 'username')
         )
 
+        conv_base = Conversacion.objects.filter(archivada=False)
+        if grupo_sel:
+            conv_base = conv_base.filter(agente__grupos_whatsapp=grupo_sel)
+
         sin_asignar = Conversacion.objects.filter(
             agente__isnull=True, archivada=False
         ).order_by('-ultimo_mensaje_at')[:20]
 
-        sin_contacto = Conversacion.objects.filter(
-            contacto__isnull=True, archivada=False
+        sin_contacto = conv_base.filter(
+            contacto__isnull=True
         ).select_related('agente').order_by('-ultimo_mensaje_at')[:50]
 
         # Detalle de convs por agente (para el panel expandible)
@@ -378,6 +391,8 @@ class DashboardSupervisorView(LoginRequiredMixin, View):
             'convs_agente': convs_agente,
             'todos_agentes': User.objects.filter(rol=User.ROL_AGENTE, is_active=True).order_by('username'),
             'campanas': Campana.objects.filter(activa=True).order_by('nombre'),
+            'grupos_filtro': GrupoAgentes.objects.all(),
+            'grupo_sel': grupo_sel,
         })
 
     def post(self, request):
