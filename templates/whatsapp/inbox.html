@@ -457,10 +457,10 @@
 
       {% if numeros|length > 1 %}
       <div class="numero-tabs">
-        <a href="?{% if q %}q={{ q }}&{% endif %}{% if solo_no_leidos %}no_leidos=1&{% endif %}{% if sin_agente %}sin_agente=1&{% endif %}{% if campana_id %}campana={{ campana_id }}&{% endif %}{% if archivadas %}archivadas=1{% endif %}"
+        <a href="?{% if q %}q={{ q }}&{% endif %}{% if solo_no_leidos %}no_leidos=1&{% endif %}{% if sin_agente %}sin_agente=1&{% endif %}{% if campana_id %}campana={{ campana_id }}&{% endif %}{% if grupo_id %}grupo={{ grupo_id }}&{% endif %}{% if archivadas %}archivadas=1{% endif %}"
            class="numero-tab {% if not numero_sel %}on{% endif %}">Todos</a>
         {% for n in numeros %}
-        <a href="?numero={{ n.pk }}{% if q %}&q={{ q }}{% endif %}{% if solo_no_leidos %}&no_leidos=1{% endif %}{% if sin_agente %}&sin_agente=1{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}{% if archivadas %}&archivadas=1{% endif %}"
+        <a href="?numero={{ n.pk }}{% if q %}&q={{ q }}{% endif %}{% if solo_no_leidos %}&no_leidos=1{% endif %}{% if sin_agente %}&sin_agente=1{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}{% if grupo_id %}&grupo={{ grupo_id }}{% endif %}{% if archivadas %}&archivadas=1{% endif %}"
            class="numero-tab {% if numero_sel == n.pk %}on{% endif %}"
            title="{{ n.instance_name }}">
           <span class="numero-dot dot-{{ n.estado_conexion }}"></span>
@@ -477,17 +477,17 @@
         {% if numero_sel %}<input type="hidden" name="numero" value="{{ numero_sel }}">{% endif %}
         <input type="text" name="q" value="{{ q }}" placeholder="Buscar..." class="search-input" onchange="this.form.submit()">
         <div class="filter-row">
-          <a href="?{% if numero_sel %}numero={{ numero_sel }}&{% endif %}{% if q %}q={{ q }}&{% endif %}no_leidos=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}"
+          <a href="?{% if numero_sel %}numero={{ numero_sel }}&{% endif %}{% if q %}q={{ q }}&{% endif %}no_leidos=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}{% if grupo_id %}&grupo={{ grupo_id }}{% endif %}"
              class="filter-btn {% if solo_no_leidos %}on{% endif %}">Sin leer</a>
           {% if user.is_supervisor %}
-          <a href="?{% if numero_sel %}numero={{ numero_sel }}&{% endif %}{% if q %}q={{ q }}&{% endif %}sin_agente=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}"
+          <a href="?{% if numero_sel %}numero={{ numero_sel }}&{% endif %}{% if q %}q={{ q }}&{% endif %}sin_agente=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}{% if grupo_id %}&grupo={{ grupo_id }}{% endif %}"
              class="filter-btn {% if sin_agente %}on{% endif %}">Sin agente</a>
           {% endif %}
-          <a href="?{% if numero_sel %}numero={{ numero_sel }}&{% endif %}{% if q %}q={{ q }}&{% endif %}sin_contacto=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}"
+          <a href="?{% if numero_sel %}numero={{ numero_sel }}&{% endif %}{% if q %}q={{ q }}&{% endif %}sin_contacto=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}{% if grupo_id %}&grupo={{ grupo_id }}{% endif %}"
              class="filter-btn {% if sin_contacto %}on{% endif %}">Sin contacto</a>
           <a href="?{% if numero_sel %}numero={{ numero_sel }}&{% endif %}{% if selected_conv %}conv={{ selected_conv.pk }}{% endif %}"
              class="filter-btn {% if not solo_no_leidos and not sin_agente and not sin_contacto and not archivadas and not campana_id %}on{% endif %}">Todos</a>
-          <a href="?{% if numero_sel %}numero={{ numero_sel }}&{% endif %}archivadas=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}"
+          <a href="?{% if numero_sel %}numero={{ numero_sel }}&{% endif %}archivadas=1{% if selected_conv %}&conv={{ selected_conv.pk }}{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}{% if grupo_id %}&grupo={{ grupo_id }}{% endif %}"
              class="filter-btn {% if archivadas %}on{% endif %}">Archivadas</a>
           {% if campanas %}
           <select onchange="filtrarCampana(this.value)" style="font-size:12px; padding:4px 8px; border-radius:var(--radius-sm); background:var(--bg{% if campana_id %}4{% else %}2{% endif %}); border:1px solid var(--border); color:var(--text); cursor:pointer; font-family:inherit;">
@@ -498,6 +498,14 @@
             {% endfor %}
           </select>
           {% endif %}
+          {% if grupos_filtro %}
+          <select onchange="filtrarGrupo(this.value)" style="font-size:12px; padding:4px 8px; border-radius:var(--radius-sm); background:var(--bg{% if grupo_id %}4{% else %}2{% endif %}); border:1px solid var(--border); color:var(--text); cursor:pointer; font-family:inherit;">
+            <option value="">Grupo: todos</option>
+            {% for g in grupos_filtro %}
+            <option value="{{ g.pk }}" {% if grupo_id == g.pk|stringformat:'s' %}selected{% endif %}>{{ g.nombre }}</option>
+            {% endfor %}
+          </select>
+          {% endif %}
         </div>
       </form>
     </div>
@@ -505,7 +513,7 @@
     <div class="conv-list" id="conv-list">
       {% for conv in conversaciones %}
       {% with last_msg=conv.mensajes.last %}
-      <a href="?conv={{ conv.pk }}{% if numero_sel %}&numero={{ numero_sel }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if solo_no_leidos %}&no_leidos=1{% endif %}{% if sin_agente %}&sin_agente=1{% endif %}{% if archivadas %}&archivadas=1{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}"
+      <a href="?conv={{ conv.pk }}{% if numero_sel %}&numero={{ numero_sel }}{% endif %}{% if q %}&q={{ q }}{% endif %}{% if solo_no_leidos %}&no_leidos=1{% endif %}{% if sin_agente %}&sin_agente=1{% endif %}{% if archivadas %}&archivadas=1{% endif %}{% if campana_id %}&campana={{ campana_id }}{% endif %}{% if grupo_id %}&grupo={{ grupo_id }}{% endif %}"
          class="conv-item {% if selected_conv.pk == conv.pk %}selected{% endif %}"
          data-conv-id="{{ conv.pk }}">
         <div class="conv-avatar">{{ conv.get_display_name|slice:":1"|upper }}</div>
@@ -1574,6 +1582,13 @@ async function sendTemplate() {
   form.submit();
 }
 
+function filtrarGrupo(val) {
+  const url = new URL(window.location.href);
+  if (val) url.searchParams.set('grupo', val);
+  else url.searchParams.delete('grupo');
+  url.searchParams.delete('conv');
+  window.location.href = url.toString();
+}
 function filtrarCampana(val) {
   const url = new URL(window.location.href);
   if (val) {

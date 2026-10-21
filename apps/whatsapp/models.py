@@ -57,6 +57,7 @@ class NumeroWhatsApp(models.Model):
     evolution_api_url = models.CharField(max_length=300, blank=True, help_text='Vacío = usar el global del .env.')
     evolution_api_key = models.CharField(max_length=300, blank=True, help_text='Vacío = usar el global del .env.')
     webhook_token = models.CharField(max_length=200, blank=True)
+    n8n_webhook_url = models.CharField(max_length=500, blank=True, help_text='URL del webhook n8n para este número. Vacío = usar el global del .env.')
     activo = models.BooleanField(default=True)
     orden = models.PositiveSmallIntegerField(default=0)
     estado_conexion = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_CLOSE)

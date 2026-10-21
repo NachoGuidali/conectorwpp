@@ -38,7 +38,7 @@ def _numeros_visibles(user):
     return qs.distinct().order_by('orden', 'nombre')
 
 
-def _get_convs_qs(user, include_archived=False, numero_id=None):
+def _get_convs_qs(user, include_archived=False, numero_id=None, grupo_id=None):
     from django.db.models import Q
     qs = Conversacion.objects.select_related('agente', 'campana', 'numero').order_by('-ultimo_mensaje_at', '-pk')
     if not include_archived:
@@ -48,6 +48,8 @@ def _get_convs_qs(user, include_archived=False, numero_id=None):
     qs = qs.filter(numero_id__in=_numeros_visibles(user).values_list('pk', flat=True))
     if numero_id:
         qs = qs.filter(numero_id=numero_id)
+    if grupo_id:
+        qs = qs.filter(agente__grupos_whatsapp__pk=grupo_id)
     return qs
 
 
@@ -140,7 +142,11 @@ class InboxView(LoginRequiredMixin, View):
         elif len(numeros) == 1:
             numero_sel = numeros[0].pk
 
-        qs = _get_convs_qs(request.user, numero_id=numero_sel)
+        grupo_id = request.GET.get('grupo', '').strip()
+        if grupo_id and not grupo_id.isdigit():
+            grupo_id = ''
+
+        qs = _get_convs_qs(request.user, numero_id=numero_sel, grupo_id=grupo_id or None)
 
         q = request.GET.get('q', '').strip()
         if q:
@@ -167,7 +173,7 @@ class InboxView(LoginRequiredMixin, View):
 
         archivadas = request.GET.get('archivadas', '').strip()
         if archivadas:
-            qs = _get_convs_qs(request.user, include_archived=True, numero_id=numero_sel).filter(archivada=True)
+            qs = _get_convs_qs(request.user, include_archived=True, numero_id=numero_sel, grupo_id=grupo_id or None).filter(archivada=True)
             if q:
                 qs = qs.filter(Q(nombre_contacto__icontains=q) | Q(telefono__icontains=q))
             if campana_id:
@@ -218,6 +224,7 @@ class InboxView(LoginRequiredMixin, View):
                 selected_conv = None
 
         campanas = Campana.objects.filter(activa=True).order_by('nombre')
+        grupos_filtro = GrupoAgentes.objects.all() if request.user.can_see_all else GrupoAgentes.objects.none()
         return render(request, self.template_name, {
             'conversaciones': conversaciones,
             'unread_total': unread_total,
@@ -228,6 +235,8 @@ class InboxView(LoginRequiredMixin, View):
             'archivadas': archivadas,
             'campana_id': campana_id,
             'campanas': campanas,
+            'grupo_id': grupo_id,
+            'grupos_filtro': grupos_filtro,
             'numeros': numeros,
             'numero_sel': numero_sel,
             'selected_conv': selected_conv,
@@ -1268,6 +1277,7 @@ class NumeroWhatsAppCreateView(SupervisorRequiredMixin, View):
             evolution_api_url=request.POST.get('evolution_api_url', '').strip(),
             evolution_api_key=request.POST.get('evolution_api_key', '').strip(),
             webhook_token=request.POST.get('webhook_token', '').strip(),
+            n8n_webhook_url=request.POST.get('n8n_webhook_url', '').strip(),
             activo=request.POST.get('activo') == '1',
             orden=int(request.POST.get('orden', 0) or 0),
         )
@@ -1293,6 +1303,7 @@ class NumeroWhatsAppUpdateView(SupervisorRequiredMixin, View):
         numero.evolution_api_url = request.POST.get('evolution_api_url', '').strip()
         numero.evolution_api_key = request.POST.get('evolution_api_key', '').strip()
         numero.webhook_token = request.POST.get('webhook_token', '').strip()
+        numero.n8n_webhook_url = request.POST.get('n8n_webhook_url', '').strip()
         numero.activo = request.POST.get('activo') == '1'
         numero.orden = int(request.POST.get('orden', numero.orden) or numero.orden)
         try:

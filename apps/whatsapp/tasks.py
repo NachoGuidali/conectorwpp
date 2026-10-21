@@ -166,7 +166,8 @@ def forward_to_n8n_task(conv_pk: int, message_data: dict):
 
 def _forward_to_n8n(conv, message_data: dict):
     from django.conf import settings
-    n8n_url = getattr(settings, 'N8N_WEBHOOK_URL', '').strip()
+    # Per-number URL takes precedence over the global .env setting
+    n8n_url = (getattr(conv.numero, 'n8n_webhook_url', '') or getattr(settings, 'N8N_WEBHOOK_URL', '')).strip()
     if not n8n_url:
         return
     crm_api_key = getattr(settings, 'CRM_API_KEY', '')
