@@ -28,13 +28,26 @@ class SupervisorRequiredMixin(LoginRequiredMixin):
         return super().dispatch(request, *args, **kwargs)
 
 
-def _get_convs_qs(user, include_archived=False):
+def _numeros_visibles(user):
+    """Números activos que el usuario puede ver: todos si es supervisor/admin, los asignados si es agente."""
+    qs = NumeroWhatsApp.objects.filter(activo=True)
+    if not user.can_see_all:
+        assigned = qs.filter(agentes=user)
+        if assigned.exists():
+            qs = assigned
+    return qs.distinct().order_by('orden', 'nombre')
+
+
+def _get_convs_qs(user, include_archived=False, numero_id=None):
     from django.db.models import Q
-    qs = Conversacion.objects.select_related('agente', 'campana').order_by('-ultimo_mensaje_at', '-pk')
+    qs = Conversacion.objects.select_related('agente', 'campana', 'numero').order_by('-ultimo_mensaje_at', '-pk')
     if not include_archived:
         qs = qs.filter(archivada=False)
     if not user.can_see_all:
         qs = qs.filter(agente=user)
+    qs = qs.filter(numero_id__in=_numeros_visibles(user).values_list('pk', flat=True))
+    if numero_id:
+        qs = qs.filter(numero_id=numero_id)
     return qs
 
 
@@ -106,8 +119,28 @@ class InboxView(LoginRequiredMixin, View):
     template_name = 'whatsapp/inbox.html'
 
     def get(self, request):
-        from django.db.models import Q
-        qs = _get_convs_qs(request.user)
+        from django.db.models import Q, Count
+
+        numeros = list(_numeros_visibles(request.user))
+        numero_ids = [n.pk for n in numeros]
+
+        # Calcular no leídos por número para las tabs
+        unread_by_numero = dict(
+            _get_convs_qs(request.user).filter(mensajes_no_leidos__gt=0)
+            .values('numero_id').annotate(c=Count('pk')).values_list('numero_id', 'c')
+        )
+        for n in numeros:
+            n.unread_count = unread_by_numero.get(n.pk, 0)
+
+        # Número seleccionado (tab activa)
+        numero_pk = request.GET.get('numero', '').strip()
+        numero_sel = None
+        if numero_pk and numero_pk.isdigit() and int(numero_pk) in numero_ids:
+            numero_sel = int(numero_pk)
+        elif len(numeros) == 1:
+            numero_sel = numeros[0].pk
+
+        qs = _get_convs_qs(request.user, numero_id=numero_sel)
 
         q = request.GET.get('q', '').strip()
         if q:
@@ -134,10 +167,7 @@ class InboxView(LoginRequiredMixin, View):
 
         archivadas = request.GET.get('archivadas', '').strip()
         if archivadas:
-            # Mostrar archivadas en lugar de activas
-            qs = Conversacion.objects.filter(archivada=True)
-            if not request.user.can_see_all:
-                qs = qs.filter(agente=request.user)
+            qs = _get_convs_qs(request.user, include_archived=True, numero_id=numero_sel).filter(archivada=True)
             if q:
                 qs = qs.filter(Q(nombre_contacto__icontains=q) | Q(telefono__icontains=q))
             if campana_id:
@@ -198,6 +228,8 @@ class InboxView(LoginRequiredMixin, View):
             'archivadas': archivadas,
             'campana_id': campana_id,
             'campanas': campanas,
+            'numeros': numeros,
+            'numero_sel': numero_sel,
             'selected_conv': selected_conv,
             'mensajes': mensajes,
             'plantillas': plantillas,
@@ -1121,11 +1153,17 @@ class ConfigView(SupervisorRequiredMixin, View):
             state = get_connection_state()
         except Exception:
             state = 'error'
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
         numeros = NumeroWhatsApp.objects.all()
+        grupos = GrupoAgentes.objects.prefetch_related('agentes').all()
+        agentes = User.objects.filter(is_active=True).order_by('first_name', 'username')
         return render(request, self.template_name, {
             'config': config,
             'connection_state': state,
             'numeros': numeros,
+            'grupos': grupos,
+            'agentes': agentes,
         })
 
     def post(self, request):
@@ -1190,6 +1228,30 @@ class LogoutInstanceView(SupervisorRequiredMixin, View):
             return JsonResponse({'ok': True})
         except Exception as e:
             return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+class GrupoAgentesCreateView(SupervisorRequiredMixin, View):
+    def post(self, request):
+        nombre = request.POST.get('nombre', '').strip()
+        if not nombre:
+            messages.error(request, 'El nombre del grupo es obligatorio.')
+            return redirect('whatsapp:config')
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        grupo, created = GrupoAgentes.objects.get_or_create(nombre=nombre)
+        agentes_ids = request.POST.getlist('agentes')
+        grupo.agentes.set(User.objects.filter(pk__in=agentes_ids))
+        msg = 'Grupo creado.' if created else 'Grupo actualizado.'
+        messages.success(request, msg)
+        return redirect('whatsapp:config')
+
+
+class GrupoAgentesDeleteView(SupervisorRequiredMixin, View):
+    def post(self, request, pk):
+        grupo = get_object_or_404(GrupoAgentes, pk=pk)
+        nombre = grupo.nombre
+        grupo.delete()
+        return JsonResponse({'ok': True, 'nombre': nombre})
 
 
 class NumeroWhatsAppCreateView(SupervisorRequiredMixin, View):

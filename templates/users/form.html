@@ -87,6 +87,22 @@
         </label>
         <div class="hint">Desactivar si este agente solo va a hacer conversaciones salientes y no debe recibir conversaciones nuevas automáticamente.</div>
       </div>
+      {% if numeros %}
+      <div class="form-group">
+        <label>Números de WhatsApp visibles</label>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
+          {% for n in numeros %}
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:400; text-transform:none; letter-spacing:0;">
+            <input type="checkbox" name="numeros" value="{{ n.pk }}" style="width:auto;"
+              {% if obj and n.pk in numeros_asignados %}checked{% endif %}>
+            <span>{{ n.nombre }}</span>
+            <span style="color:var(--text3); font-size:11px;">({{ n.instance_name }})</span>
+          </label>
+          {% endfor %}
+        </div>
+        <div class="hint">Vacío = el usuario ve todos los números activos.</div>
+      </div>
+      {% endif %}
       <div class="actions">
         <button type="submit" class="btn btn-green">Guardar</button>
         <a href="{% url 'users:list' %}" class="btn btn-outline">Cancelar</a>

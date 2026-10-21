@@ -17,6 +17,13 @@ class User(AbstractUser):
     telefono = models.CharField(max_length=20, blank=True)
     en_turno = models.BooleanField(default=True, verbose_name='En turno')
     recibe_asignaciones = models.BooleanField(default=True, verbose_name='Recibe asignaciones automáticas')
+    numeros = models.ManyToManyField(
+        'whatsapp.NumeroWhatsApp',
+        related_name='agentes',
+        blank=True,
+        verbose_name='Números de WhatsApp asignados',
+        help_text='Vacío = ve todos los números activos.',
+    )
 
     class Meta:
         verbose_name = 'Usuario'

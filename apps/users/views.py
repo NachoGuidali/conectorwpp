@@ -27,8 +27,13 @@ class UserCreateView(AdminRequiredMixin, View):
     template_name = 'users/form.html'
 
     def get(self, request):
+        from apps.whatsapp.models import NumeroWhatsApp
         data = {'username': '', 'first_name': '', 'last_name': '', 'email': '', 'telefono': '', 'rol': ''}
-        return render(request, self.template_name, {'rol_choices': User.ROL_CHOICES, 'data': data})
+        return render(request, self.template_name, {
+            'rol_choices': User.ROL_CHOICES, 'data': data,
+            'numeros': NumeroWhatsApp.objects.filter(activo=True).order_by('orden', 'nombre'),
+            'numeros_asignados': [],
+        })
 
     def post(self, request):
         username = request.POST.get('username', '').strip()
@@ -53,6 +58,10 @@ class UserCreateView(AdminRequiredMixin, View):
             first_name=first_name, last_name=last_name,
             rol=rol, telefono=telefono, recibe_asignaciones=recibe_asignaciones,
         )
+        numeros_ids = request.POST.getlist('numeros')
+        if numeros_ids:
+            from apps.whatsapp.models import NumeroWhatsApp
+            user.numeros.set(NumeroWhatsApp.objects.filter(pk__in=numeros_ids))
         messages.success(request, f'Usuario {user.username} creado.')
         return redirect('users:list')
 
@@ -61,6 +70,7 @@ class UserUpdateView(AdminRequiredMixin, View):
     template_name = 'users/form.html'
 
     def get(self, request, pk):
+        from apps.whatsapp.models import NumeroWhatsApp
         user = get_object_or_404(User, pk=pk)
         data = {
             'first_name': user.first_name or '',
@@ -70,7 +80,11 @@ class UserUpdateView(AdminRequiredMixin, View):
             'rol': user.rol or '',
             'recibe_asignaciones': user.recibe_asignaciones,
         }
-        return render(request, self.template_name, {'obj': user, 'rol_choices': User.ROL_CHOICES, 'data': data})
+        return render(request, self.template_name, {
+            'obj': user, 'rol_choices': User.ROL_CHOICES, 'data': data,
+            'numeros': NumeroWhatsApp.objects.filter(activo=True).order_by('orden', 'nombre'),
+            'numeros_asignados': list(user.numeros.values_list('pk', flat=True)),
+        })
 
     def post(self, request, pk):
         user = get_object_or_404(User, pk=pk)
@@ -84,6 +98,9 @@ class UserUpdateView(AdminRequiredMixin, View):
         if password:
             user.set_password(password)
         user.save()
+        numeros_ids = request.POST.getlist('numeros')
+        from apps.whatsapp.models import NumeroWhatsApp
+        user.numeros.set(NumeroWhatsApp.objects.filter(pk__in=numeros_ids))
         messages.success(request, 'Usuario actualizado.')
         return redirect('users:list')
 

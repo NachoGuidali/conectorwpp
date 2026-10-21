@@ -51,6 +51,9 @@ urlpatterns = [
     path('config/qr/', views.QRCodeView.as_view(), name='qr'),
     path('config/estado/', views.ConnectionStatusView.as_view(), name='connection_status'),
     path('config/logout/', views.LogoutInstanceView.as_view(), name='logout_instance'),
+    # Grupos de agentes
+    path('config/grupos/guardar/', views.GrupoAgentesCreateView.as_view(), name='grupo_create'),
+    path('config/grupos/<int:pk>/eliminar/', views.GrupoAgentesDeleteView.as_view(), name='grupo_delete'),
     # Números de WhatsApp
     path('config/numeros/nuevo/', views.NumeroWhatsAppCreateView.as_view(), name='numero_create'),
     path('config/numeros/<int:pk>/editar/', views.NumeroWhatsAppUpdateView.as_view(), name='numero_update'),
