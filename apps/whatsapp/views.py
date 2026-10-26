@@ -1890,7 +1890,7 @@ class APIReasignarView(View):
                 if not contacto.es_socio:
                     contacto.es_socio = True
                     contacto.save(update_fields=['es_socio'])
-                etapa_socio = Etapa.objects.filter(nombre__iexact='Soy socio').first()
+                etapa_socio = Etapa.objects.filter(nombre__iexact='Socio').first()
                 if etapa_socio and contacto.etapa_id != etapa_socio.pk:
                     cambiar_etapa(contacto, etapa_socio)
             except Exception as e:
