@@ -759,9 +759,14 @@
         {% if selected_conv.contacto.email %}
         <div class="info-value" style="font-size:12px; margin-top:2px;">{{ selected_conv.contacto.email }}</div>
         {% endif %}
-        {% if selected_conv.contacto.grupo %}
-        <div style="margin-top:6px;">
+        {% if selected_conv.contacto.es_socio or selected_conv.contacto.grupo %}
+        <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:4px;">
+          {% if selected_conv.contacto.es_socio %}
+          <span style="background:#16a34a; color:#fff; font-size:11px; padding:2px 8px; border-radius:4px; font-weight:600;">Socio</span>
+          {% endif %}
+          {% if selected_conv.contacto.grupo %}
           <span style="background:var(--bg4); color:var(--text2); font-size:11px; padding:2px 8px; border-radius:4px;">{{ selected_conv.contacto.grupo }}</span>
+          {% endif %}
         </div>
         {% endif %}
         {% if contacto_campos %}

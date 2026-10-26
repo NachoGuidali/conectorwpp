@@ -14,8 +14,9 @@
     <div class="kcard-archivo-meta">{% if c.etapa %}Antes: {{ c.etapa.nombre }}{% endif %}{% if c.etapa and c.archivado_at %} · {% endif %}{% if c.archivado_at %}{{ c.archivado_at|date:"d/m/Y" }}{% endif %}</div>
   </div>
   {% endif %}
-  {% if c.grupo or user.can_see_all %}
+  {% if c.es_socio or c.grupo or user.can_see_all %}
   <div class="kcard-meta">
+    {% if c.es_socio %}<span class="kcard-tag" style="background:#16a34a; color:#fff; font-weight:600;">Socio</span>{% endif %}
     {% if c.grupo %}<span class="kcard-tag">{{ c.grupo }}</span>{% endif %}
     {% if user.can_see_all %}
       {% if c.agente %}

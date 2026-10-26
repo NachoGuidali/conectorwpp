@@ -111,6 +111,7 @@ class Contacto(models.Model):
         related_name='contactos',
     )
     etapa_actualizada_at = models.DateTimeField(null=True, blank=True)
+    es_socio = models.BooleanField(default=False, db_index=True)
     # Archivado: la tarjeta pasa a la columna "Archivado" y conserva su etapa para cuando se desarchive
     archivado = models.BooleanField(default=False, db_index=True)
     archivado_motivo = models.ForeignKey(

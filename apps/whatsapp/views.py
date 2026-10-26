@@ -1879,6 +1879,23 @@ class APIReasignarView(View):
             bot_n8n_activo=False,
         )
         logger.info('Conversación %s reasignada al grupo "%s" → agente %s', conv.pk, grupo_nombre, agente.username)
+
+        # Marcar el contacto como socio y moverlo a la etapa "Soy socio" si existe
+        conv.refresh_from_db()
+        if conv.contacto_id:
+            try:
+                from apps.contacts.models import Contacto, Etapa
+                from apps.contacts.pipeline import cambiar_etapa
+                contacto = Contacto.objects.get(pk=conv.contacto_id)
+                if not contacto.es_socio:
+                    contacto.es_socio = True
+                    contacto.save(update_fields=['es_socio'])
+                etapa_socio = Etapa.objects.filter(nombre__iexact='Soy socio').first()
+                if etapa_socio and contacto.etapa_id != etapa_socio.pk:
+                    cambiar_etapa(contacto, etapa_socio)
+            except Exception as e:
+                logger.warning('APIReasignar: error marcando socio en conv %s: %s', conv.pk, e)
+
         return JsonResponse({
             'ok': True,
             'conversation_id': conv.pk,
