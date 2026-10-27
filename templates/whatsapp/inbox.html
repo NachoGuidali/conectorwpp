@@ -821,7 +821,16 @@
     {% else %}
     <div class="info-section">
       <div class="info-label">Agente</div>
-      <div class="info-value">{{ selected_conv.agente.get_full_name|default:selected_conv.agente.username|default:"Sin asignar" }}</div>
+      <div class="info-value" id="agente-nombre-display">{{ selected_conv.agente.get_full_name|default:selected_conv.agente.username|default:"Sin asignar" }}</div>
+    </div>
+    {% endif %}
+
+    {% if selected_conv and agents %}
+    <div class="info-section">
+      <button type="button" onclick="abrirModalReasignar()"
+              style="width:100%; padding:6px 0; font-size:12px; background:var(--bg3); color:var(--text2); border:1px solid var(--border); border-radius:6px; cursor:pointer;">
+        Reasignar conversación
+      </button>
     </div>
     {% endif %}
 
@@ -925,6 +934,154 @@
     </div>
   </div>
 </div>
+
+{% if selected_conv and agents %}
+<div class="modal-overlay" id="reasignar-modal" onclick="if(event.target===this)cerrarModalReasignar()">
+  <div class="modal" style="width:340px;">
+    <div class="modal-title">Reasignar conversación</div>
+
+    <div style="display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:12px;">
+      <button type="button" id="tab-agente" onclick="switchTabReasignar('agente')"
+              style="flex:1; padding:7px 0; font-size:12px; border:none; border-bottom:2px solid var(--green); background:none; color:var(--green); cursor:pointer; font-weight:600;">
+        Agente
+      </button>
+      <button type="button" id="tab-grupo" onclick="switchTabReasignar('grupo')"
+              style="flex:1; padding:7px 0; font-size:12px; border:none; border-bottom:2px solid transparent; background:none; color:var(--text3); cursor:pointer;">
+        Grupo
+      </button>
+    </div>
+
+    <div id="panel-agente">
+      <input type="text" id="buscar-agente" placeholder="Buscar agente..." oninput="filtrarAgentes(this.value)"
+             style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:6px; background:var(--bg2); color:var(--text); margin-bottom:8px;">
+      <div id="lista-agentes" style="max-height:200px; overflow-y:auto; display:flex; flex-direction:column; gap:2px;">
+        {% for agent in agents %}
+        <button type="button" class="reasignar-item" data-id="{{ agent.pk }}" data-nombre="{{ agent.get_full_name|default:agent.username }}"
+                onclick="seleccionarAgenteReasignar({{ agent.pk }}, '{{ agent.get_full_name|default:agent.username|escapejs }}')"
+                style="text-align:left; padding:7px 10px; font-size:12px; border:1px solid transparent; border-radius:5px; background:none; color:var(--text); cursor:pointer;">
+          {{ agent.get_full_name|default:agent.username }}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div id="panel-grupo" style="display:none;">
+      <div style="display:flex; flex-direction:column; gap:2px;">
+        {% for g in grupos_reasignar %}
+        <button type="button" class="reasignar-item-grupo" data-nombre="{{ g.nombre|escapejs }}"
+                onclick="seleccionarGrupoReasignar('{{ g.nombre|escapejs }}')"
+                style="text-align:left; padding:7px 10px; font-size:12px; border:1px solid transparent; border-radius:5px; background:none; color:var(--text); cursor:pointer;">
+          {{ g.nombre }}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div id="reasignar-seleccion" style="display:none; margin-top:10px; padding:8px 10px; background:var(--bg3); border-radius:6px; font-size:12px; color:var(--text);">
+      Asignar a: <strong id="reasignar-seleccion-nombre"></strong>
+    </div>
+
+    <div class="modal-actions" style="margin-top:14px;">
+      <button type="button" class="modal-btn" onclick="cerrarModalReasignar()">Cancelar</button>
+      <button type="button" class="modal-btn modal-btn-send" id="btn-confirmar-reasignar" onclick="confirmarReasignar()" disabled>Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  let _selAgId = null, _selAgNombre = '', _selGrupo = '';
+
+  window.abrirModalReasignar = function() {
+    _selAgId = null; _selAgNombre = ''; _selGrupo = '';
+    document.getElementById('reasignar-seleccion').style.display = 'none';
+    document.getElementById('btn-confirmar-reasignar').disabled = true;
+    document.getElementById('btn-confirmar-reasignar').textContent = 'Confirmar';
+    document.getElementById('buscar-agente').value = '';
+    filtrarAgentes('');
+    switchTabReasignar('agente');
+    document.querySelectorAll('.reasignar-item, .reasignar-item-grupo').forEach(b => b.style.background = 'none');
+    document.getElementById('reasignar-modal').classList.add('open');
+  };
+
+  window.cerrarModalReasignar = function() {
+    document.getElementById('reasignar-modal').classList.remove('open');
+  };
+
+  window.switchTabReasignar = function(tab) {
+    document.getElementById('panel-agente').style.display = tab === 'agente' ? '' : 'none';
+    document.getElementById('panel-grupo').style.display = tab === 'grupo' ? '' : 'none';
+    ['agente', 'grupo'].forEach(t => {
+      const btn = document.getElementById('tab-' + t);
+      const active = t === tab;
+      btn.style.borderBottomColor = active ? 'var(--green)' : 'transparent';
+      btn.style.color = active ? 'var(--green)' : 'var(--text3)';
+      btn.style.fontWeight = active ? '600' : '400';
+    });
+  };
+
+  window.filtrarAgentes = function(q) {
+    const q2 = q.toLowerCase();
+    document.querySelectorAll('.reasignar-item').forEach(btn => {
+      btn.style.display = btn.dataset.nombre.toLowerCase().includes(q2) ? '' : 'none';
+    });
+  };
+
+  window.seleccionarAgenteReasignar = function(id, nombre) {
+    _selAgId = id; _selAgNombre = nombre; _selGrupo = '';
+    document.querySelectorAll('.reasignar-item, .reasignar-item-grupo').forEach(b => b.style.background = 'none');
+    document.querySelector(`.reasignar-item[data-id="${id}"]`).style.background = 'var(--bg3)';
+    mostrarSeleccionReasignar(nombre);
+  };
+
+  window.seleccionarGrupoReasignar = function(nombre) {
+    _selGrupo = nombre; _selAgId = null;
+    document.querySelectorAll('.reasignar-item, .reasignar-item-grupo').forEach(b => b.style.background = 'none');
+    document.querySelector(`.reasignar-item-grupo[data-nombre="${CSS.escape(nombre)}"]`).style.background = 'var(--bg3)';
+    mostrarSeleccionReasignar('Grupo: ' + nombre);
+  };
+
+  function mostrarSeleccionReasignar(txt) {
+    document.getElementById('reasignar-seleccion-nombre').textContent = txt;
+    document.getElementById('reasignar-seleccion').style.display = '';
+    document.getElementById('btn-confirmar-reasignar').disabled = false;
+  }
+
+  window.confirmarReasignar = async function() {
+    const btn = document.getElementById('btn-confirmar-reasignar');
+    btn.disabled = true;
+    btn.textContent = 'Reasignando...';
+    const body = { conversation_id: {{ selected_conv.pk }} };
+    if (_selAgId) body.agente_id = _selAgId;
+    else body.grupo = _selGrupo;
+    try {
+      const res = await fetch('/whatsapp/api/reasignar-manual/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        cerrarModalReasignar();
+        const el = document.getElementById('agente-nombre-display');
+        if (el) el.textContent = data.agente_nombre;
+        const sel = document.getElementById('assign-select');
+        if (sel) sel.value = data.agente_id;
+      } else {
+        alert('Error: ' + (data.error || 'No se pudo reasignar'));
+        btn.disabled = false;
+        btn.textContent = 'Confirmar';
+      }
+    } catch(e) {
+      alert('Error de red');
+      btn.disabled = false;
+      btn.textContent = 'Confirmar';
+    }
+  };
+})();
+</script>
+{% endif %}
+
 {% endblock %}
 
 {% block extra_js %}

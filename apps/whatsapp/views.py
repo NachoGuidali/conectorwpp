@@ -214,6 +214,7 @@ class InboxView(LoginRequiredMixin, View):
                 total = msgs_qs.count()
                 mensajes = list(msgs_qs[max(0, total - 60):])
                 plantillas = PlantillaHSM.objects.filter(activa=True)
+                agents = User.objects.filter(is_active=True, rol=User.ROL_AGENTE).order_by('first_name', 'username')
                 if request.user.can_see_all:
                     agents = User.objects.filter(is_active=True).order_by('first_name', 'username')
                 last_msg = selected_conv.mensajes.order_by('timestamp').last()
@@ -225,6 +226,7 @@ class InboxView(LoginRequiredMixin, View):
 
         campanas = Campana.objects.filter(activa=True).order_by('nombre')
         grupos_filtro = GrupoAgentes.objects.all() if request.user.can_see_all else GrupoAgentes.objects.none()
+        grupos_reasignar = GrupoAgentes.objects.all()
         return render(request, self.template_name, {
             'conversaciones': conversaciones,
             'unread_total': unread_total,
@@ -247,6 +249,7 @@ class InboxView(LoginRequiredMixin, View):
             'contacto_campos': contacto_campos,
             'etapas': _etapas_si_contacto(selected_conv),
             'motivos_archivo': _motivos_archivo() if selected_conv else [],
+            'grupos_reasignar': grupos_reasignar,
         })
 
     def post(self, request):
@@ -1901,4 +1904,55 @@ class APIReasignarView(View):
             'conversation_id': conv.pk,
             'grupo': grupo.nombre,
             'agente_asignado': agente.username,
+        })
+
+
+class APIReasignarManualView(LoginRequiredMixin, View):
+    """
+    Reasigna una conversación manualmente desde el inbox (agente o supervisor).
+    POST { "conversation_id": 123, "agente_id": 5 }
+    o    { "conversation_id": 123, "grupo": "autorizaciones" }
+    """
+
+    def post(self, request):
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({'ok': False, 'error': 'JSON inválido'}, status=400)
+
+        conv_id = data.get('conversation_id')
+        if not conv_id:
+            return JsonResponse({'ok': False, 'error': 'Falta conversation_id'}, status=400)
+
+        conv = Conversacion.objects.filter(pk=conv_id).first()
+        if not conv:
+            return JsonResponse({'ok': False, 'error': 'Conversación no encontrada'}, status=404)
+
+        if not request.user.can_see_all and conv.agente_id != request.user.pk:
+            return JsonResponse({'ok': False, 'error': 'Sin permiso'}, status=403)
+
+        agente_id = data.get('agente_id')
+        grupo_nombre = (data.get('grupo') or '').strip()
+
+        if agente_id:
+            agente = User.objects.filter(pk=agente_id, is_active=True).first()
+            if not agente:
+                return JsonResponse({'ok': False, 'error': 'Agente no encontrado'}, status=404)
+        elif grupo_nombre:
+            try:
+                grupo = GrupoAgentes.objects.get(nombre__iexact=grupo_nombre)
+            except GrupoAgentes.DoesNotExist:
+                return JsonResponse({'ok': False, 'error': f'Grupo "{grupo_nombre}" no encontrado'}, status=404)
+            agente = grupo.agente_aleatorio()
+            if not agente:
+                return JsonResponse({'ok': False, 'error': f'El grupo "{grupo_nombre}" no tiene agentes activos'}, status=400)
+        else:
+            return JsonResponse({'ok': False, 'error': 'Falta agente_id o grupo'}, status=400)
+
+        Conversacion.objects.filter(pk=conv.pk).update(agente=agente, estado=Conversacion.ESTADO_ABIERTA)
+        logger.info('Conv %s reasignada manualmente por %s → agente %s', conv.pk, request.user.username, agente.username)
+        return JsonResponse({
+            'ok': True,
+            'agente_id': agente.pk,
+            'agente_nombre': agente.get_full_name() or agente.username,
         })
