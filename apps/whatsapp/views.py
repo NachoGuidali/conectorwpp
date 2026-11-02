@@ -1876,12 +1876,13 @@ class APIReasignarView(View):
         if not agente:
             return JsonResponse({'ok': False, 'error': f'El grupo "{grupo_nombre}" no tiene agentes activos'}, status=400)
 
+        mantener_bot = bool(data.get('mantener_bot_activo', False))
         Conversacion.objects.filter(pk=conv.pk).update(
             agente=agente,
             estado=Conversacion.ESTADO_ABIERTA,
-            bot_n8n_activo=False,
+            **({} if mantener_bot else {'bot_n8n_activo': False}),
         )
-        logger.info('Conversación %s reasignada al grupo "%s" → agente %s', conv.pk, grupo_nombre, agente.username)
+        logger.info('Conversación %s reasignada al grupo "%s" → agente %s (bot_activo=%s)', conv.pk, grupo_nombre, agente.username, mantener_bot)
 
         # Marcar el contacto como socio y moverlo a la etapa "Soy socio" si existe
         conv.refresh_from_db()
@@ -1956,3 +1957,71 @@ class APIReasignarManualView(LoginRequiredMixin, View):
             'agente_id': agente.pk,
             'agente_nombre': agente.get_full_name() or agente.username,
         })
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class APILiberarBotView(View):
+    """
+    Desactiva el bot n8n de una conversación y opcionalmente guarda datos del contacto.
+    Llamado por n8n al finalizar la recolección de datos de socio (DNI + email).
+
+    POST {
+        "phone": "+549...",         (o "conversation_id": 123)
+        "dni": "12345678",          (opcional)
+        "email": "x@mail.com",      (opcional)
+    }
+    """
+
+    def post(self, request):
+        from django.conf import settings as dj
+        api_key = getattr(dj, 'CRM_API_KEY', '')
+        if not api_key or request.headers.get('X-Api-Key', '') != api_key:
+            return JsonResponse({'ok': False, 'error': 'Unauthorized'}, status=401)
+
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({'ok': False, 'error': 'JSON inválido'}, status=400)
+
+        conv_id = data.get('conversation_id')
+        phone = data.get('phone', '').strip()
+
+        conv = None
+        if conv_id:
+            conv = Conversacion.objects.filter(pk=conv_id).first()
+        elif phone:
+            if not phone.startswith('+'):
+                phone = '+' + phone
+            conv = Conversacion.objects.filter(telefono=phone, archivada=False).order_by('-ultimo_mensaje_at').first()
+
+        if not conv:
+            return JsonResponse({'ok': False, 'error': 'Conversación no encontrada'}, status=404)
+
+        Conversacion.objects.filter(pk=conv.pk).update(bot_n8n_activo=False)
+        logger.info('Bot liberado en conversación %s', conv.pk)
+
+        # Guardar DNI y email en el contacto si se pasaron
+        dni = (data.get('dni') or '').strip()
+        email = (data.get('email') or '').strip()
+        if (dni or email) and conv.contacto_id:
+            try:
+                from apps.contacts.models import Contacto, CampoPersonalizado, ValorCampo
+                import re as _re
+                contacto = Contacto.objects.get(pk=conv.contacto_id)
+                if email:
+                    contacto.email = email
+                    contacto.save(update_fields=['email'])
+                if dni:
+                    slug = 'dni'
+                    campo, _ = CampoPersonalizado.objects.get_or_create(
+                        nombre=slug,
+                        defaults={'etiqueta': 'DNI', 'tipo': 'text'},
+                    )
+                    ValorCampo.objects.update_or_create(
+                        contacto=contacto, campo=campo,
+                        defaults={'valor': dni},
+                    )
+            except Exception as e:
+                logger.warning('APILiberarBot: error guardando datos en contacto %s: %s', conv.contacto_id, e)
+
+        return JsonResponse({'ok': True, 'conversation_id': conv.pk})
