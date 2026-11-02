@@ -1839,9 +1839,9 @@ class APIReasignarView(View):
     """
 
     def post(self, request):
-        token = request.META.get('HTTP_X_API_TOKEN', '')
-        expected = ConfiguracionWhatsApp.get_setting('webhook_token')
-        if not expected or token != expected:
+        from django.conf import settings as dj
+        api_key = getattr(dj, 'CRM_API_KEY', '')
+        if not api_key or request.headers.get('X-Api-Key', '') != api_key:
             return JsonResponse({'ok': False, 'error': 'Token inválido'}, status=401)
 
         try:
