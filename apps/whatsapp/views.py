@@ -2038,12 +2038,53 @@ class APILiberarBotView(View):
 
 
 class MediaProxyView(LoginRequiredMixin, View):
-    """Sirve un archivo de media descargándolo desde Evolution API con el nombre correcto."""
+    """Sirve un archivo de media con el nombre y extensión correctos."""
+
+    # Extensiones que se consideran válidas (no fechas/números)
+    _KNOWN_EXTS = {
+        '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+        '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg',
+        '.mp4', '.mov', '.avi', '.webm',
+        '.mp3', '.ogg', '.opus', '.aac', '.wav', '.m4a',
+        '.zip', '.rar', '.txt', '.csv',
+    }
+
+    def _fix_filename(self, filename, mime):
+        """Devuelve el filename con la extensión correcta según el mime type."""
+        # Extensión esperada para este mime
+        expected_ext = None
+        if mime == 'application/pdf':
+            expected_ext = '.pdf'
+        elif mime == 'application/msword':
+            expected_ext = '.doc'
+        elif mime == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+            expected_ext = '.docx'
+        elif mime == 'application/vnd.ms-excel':
+            expected_ext = '.xls'
+        elif mime == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+            expected_ext = '.xlsx'
+        else:
+            import mimetypes
+            expected_ext = mimetypes.guess_extension(mime)
+
+        if not expected_ext:
+            return filename
+
+        # Verificar si ya tiene esa extensión (ignorando mayúsculas)
+        if filename.lower().endswith(expected_ext.lower()):
+            return filename
+
+        # Verificar si tiene OTRA extensión conocida → no tocar
+        for ext in self._KNOWN_EXTS:
+            if filename.lower().endswith(ext):
+                return filename
+
+        # No tiene extensión válida → agregar la del mime
+        return filename.rstrip('.') + expected_ext
 
     def get(self, request, pk):
-        import mimetypes
-        import requests as req
-        from django.http import StreamingHttpResponse
+        import os
+        from django.conf import settings as dj
 
         msg = get_object_or_404(Mensaje, pk=pk)
         if not _get_convs_qs(request.user, include_archived=True).filter(pk=msg.conversacion_id).exists():
@@ -2054,29 +2095,39 @@ class MediaProxyView(LoginRequiredMixin, View):
             from django.http import Http404
             raise Http404
 
+        mime = msg.media_mime or 'application/octet-stream'
+        filename = self._fix_filename(msg.media_filename or 'archivo', mime)
+        safe_name = re.sub(r'[^\w.\- ]', '_', filename).strip()
+
+        # URL local (/media/...) → servir desde filesystem
+        if msg.media_url.startswith('/'):
+            rel = msg.media_url.lstrip('/')
+            prefix = dj.MEDIA_URL.lstrip('/')
+            if rel.startswith(prefix):
+                rel = rel[len(prefix):]
+            file_path = os.path.join(dj.MEDIA_ROOT, rel)
+            if not os.path.exists(file_path):
+                from django.http import Http404
+                raise Http404
+            from django.http import FileResponse
+            resp = FileResponse(open(file_path, 'rb'), content_type=mime)
+            resp['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+            return resp
+
+        # URL remota → fetch y stream
+        import requests as req
+        from django.http import StreamingHttpResponse
         try:
             r = req.get(msg.media_url, timeout=30, stream=True)
             r.raise_for_status()
+            if mime == 'application/octet-stream':
+                mime = r.headers.get('Content-Type', mime).split(';')[0].strip()
+                filename = self._fix_filename(filename, mime)
+                safe_name = re.sub(r'[^\w.\- ]', '_', filename).strip()
         except Exception as e:
             logger.warning('MediaProxy pk=%s fetch error: %s url=%s', pk, e, msg.media_url)
             return redirect(msg.media_url)
 
-        mime = msg.media_mime or r.headers.get('Content-Type', 'application/octet-stream').split(';')[0].strip()
-        filename = msg.media_filename or 'archivo'
-
-        # Asegurar que el filename tenga extensión
-        if '.' not in filename.split('/')[-1]:
-            ext = mimetypes.guess_extension(mime)
-            if ext:
-                # Python a veces mapea application/pdf → .pdf2 o .pdf — normalizar
-                if mime == 'application/pdf':
-                    ext = '.pdf'
-                filename += ext
-
-        response = StreamingHttpResponse(
-            r.iter_content(chunk_size=8192),
-            content_type=mime,
-        )
-        safe_name = re.sub(r'[^\w.\-]', '_', filename)
-        response['Content-Disposition'] = f'attachment; filename="{safe_name}"'
-        return response
+        resp = StreamingHttpResponse(r.iter_content(chunk_size=8192), content_type=mime)
+        resp['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+        return resp
