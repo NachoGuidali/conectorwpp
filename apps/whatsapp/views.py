@@ -2035,3 +2035,48 @@ class APILiberarBotView(View):
                 logger.warning('APILiberarBot: error guardando datos en contacto %s: %s', conv.contacto_id, e)
 
         return JsonResponse({'ok': True, 'conversation_id': conv.pk})
+
+
+class MediaProxyView(LoginRequiredMixin, View):
+    """Sirve un archivo de media descargándolo desde Evolution API con el nombre correcto."""
+
+    def get(self, request, pk):
+        import mimetypes
+        import requests as req
+        from django.http import StreamingHttpResponse
+
+        msg = get_object_or_404(Mensaje, pk=pk)
+        if not _get_convs_qs(request.user, include_archived=True).filter(pk=msg.conversacion_id).exists():
+            from django.http import Http404
+            raise Http404
+
+        if not msg.media_url:
+            from django.http import Http404
+            raise Http404
+
+        try:
+            r = req.get(msg.media_url, timeout=30, stream=True)
+            r.raise_for_status()
+        except Exception:
+            from django.http import Http404
+            raise Http404
+
+        mime = msg.media_mime or r.headers.get('Content-Type', 'application/octet-stream').split(';')[0].strip()
+        filename = msg.media_filename or 'archivo'
+
+        # Asegurar que el filename tenga extensión
+        if '.' not in filename.split('/')[-1]:
+            ext = mimetypes.guess_extension(mime)
+            if ext:
+                # Python a veces mapea application/pdf → .pdf2 o .pdf — normalizar
+                if mime == 'application/pdf':
+                    ext = '.pdf'
+                filename += ext
+
+        response = StreamingHttpResponse(
+            r.iter_content(chunk_size=8192),
+            content_type=mime,
+        )
+        safe_name = re.sub(r'[^\w.\-]', '_', filename)
+        response['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+        return response
