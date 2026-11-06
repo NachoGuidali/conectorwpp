@@ -171,6 +171,10 @@ class InboxView(LoginRequiredMixin, View):
             else:
                 qs = qs.filter(campana_id=campana_id)
 
+        etapa_id = request.GET.get('etapa', '').strip()
+        if etapa_id and etapa_id.isdigit():
+            qs = qs.filter(contacto__etapa_id=etapa_id)
+
         archivadas = request.GET.get('archivadas', '').strip()
         if archivadas:
             qs = _get_convs_qs(request.user, include_archived=True, numero_id=numero_sel, grupo_id=grupo_id or None).filter(archivada=True)
@@ -181,6 +185,8 @@ class InboxView(LoginRequiredMixin, View):
                     qs = qs.filter(campana__isnull=True)
                 else:
                     qs = qs.filter(campana_id=campana_id)
+            if etapa_id and etapa_id.isdigit():
+                qs = qs.filter(contacto__etapa_id=etapa_id)
             qs = qs.order_by('-ultimo_mensaje_at')
 
         conversaciones = list(qs[:100])
@@ -227,6 +233,8 @@ class InboxView(LoginRequiredMixin, View):
         campanas = Campana.objects.filter(activa=True).order_by('nombre')
         grupos_filtro = GrupoAgentes.objects.all() if request.user.can_see_all else GrupoAgentes.objects.none()
         grupos_reasignar = GrupoAgentes.objects.all()
+        from apps.contacts.models import Etapa
+        etapas_filtro = list(Etapa.objects.all())
         return render(request, self.template_name, {
             'conversaciones': conversaciones,
             'unread_total': unread_total,
@@ -237,6 +245,8 @@ class InboxView(LoginRequiredMixin, View):
             'archivadas': archivadas,
             'campana_id': campana_id,
             'campanas': campanas,
+            'etapa_id': etapa_id,
+            'etapas_filtro': etapas_filtro,
             'grupo_id': grupo_id,
             'grupos_filtro': grupos_filtro,
             'numeros': numeros,
