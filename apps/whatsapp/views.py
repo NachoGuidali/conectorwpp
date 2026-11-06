@@ -2057,9 +2057,9 @@ class MediaProxyView(LoginRequiredMixin, View):
         try:
             r = req.get(msg.media_url, timeout=30, stream=True)
             r.raise_for_status()
-        except Exception:
-            from django.http import Http404
-            raise Http404
+        except Exception as e:
+            logger.warning('MediaProxy pk=%s fetch error: %s url=%s', pk, e, msg.media_url)
+            return redirect(msg.media_url)
 
         mime = msg.media_mime or r.headers.get('Content-Type', 'application/octet-stream').split(';')[0].strip()
         filename = msg.media_filename or 'archivo'
