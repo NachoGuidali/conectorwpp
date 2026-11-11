@@ -138,10 +138,6 @@ def process_incoming_message(self, message_data: dict, numero_id: int = None):
             from apps.contacts.pipeline import avanzar_etapa_si_nuevo
             avanzar_etapa_si_nuevo(contacto)
 
-        # Notificar CRM externo si es una conversación nueva
-        if created:
-            send_lead_to_crm_task.delay(conv.pk)
-
         # Reenviar a n8n si el bot está activo (con delay random anti-ban)
         if conv.bot_n8n_activo:
             forward_to_n8n_task.apply_async(
