@@ -50,6 +50,70 @@ def _personalizar(mensaje: str, dc) -> str:
     return result
 
 
+def numero_de_envio():
+    """
+    NumeroWhatsApp por el que salen las difusiones: el de la instancia que usa
+    el sender por defecto; si no hay uno así, el primero activo.
+    """
+    from apps.whatsapp.models import NumeroWhatsApp
+    from apps.whatsapp.sender import _instance
+    activos = NumeroWhatsApp.objects.filter(activo=True).order_by('orden', 'pk')
+    return activos.filter(instance_name=_instance(None)).first() or activos.first()
+
+
+def registrar_en_inbox(dc, mensaje, msg_id, enviado_at, iniciador=None, numero=None):
+    """
+    Deja el mensaje de difusión enviado en la conversación del destinatario
+    (la crea si no existe) para que se vea en el inbox y en la ficha del contacto.
+    Devuelve (conversacion, mensaje_creado).
+    """
+    from apps.whatsapp.models import Conversacion, Mensaje
+    from apps.contacts.asignacion import asegurar_agente
+
+    numero = numero or numero_de_envio()
+    if numero is None:
+        raise RuntimeError('No hay ningún NumeroWhatsApp activo')
+
+    # Una conversación por (teléfono, número): la respuesta del cliente llega al número que le escribió
+    conv = Conversacion.objects.filter(telefono=dc.telefono, numero=numero).first()
+    if conv is None:
+        conv = Conversacion.objects.create(
+            telefono=dc.telefono,
+            numero=numero,
+            nombre_contacto=dc.nombre or dc.telefono,
+            contacto=dc.contacto,
+            origen_conversacion=Conversacion.ORIGEN_SALIENTE,
+            ultimo_mensaje_at=enviado_at,
+        )
+    else:
+        update_fields = {}
+        if not conv.ultimo_mensaje_at or conv.ultimo_mensaje_at < enviado_at:
+            update_fields['ultimo_mensaje_at'] = enviado_at
+        if not conv.contacto_id and dc.contacto_id:
+            update_fields['contacto_id'] = dc.contacto_id
+            conv.contacto = dc.contacto
+        if not conv.nombre_contacto and dc.nombre:
+            update_fields['nombre_contacto'] = dc.nombre
+        if update_fields:
+            Conversacion.objects.filter(pk=conv.pk).update(**update_fields)
+
+    # Dueño: el del contacto; si no tiene, quien creó la difusión (si es agente); si no, por carga
+    asegurar_agente(conv=conv, contacto=conv.contacto, iniciador=iniciador)
+
+    if msg_id and Mensaje.objects.filter(conversacion=conv, whatsapp_message_id=msg_id).exists():
+        return conv, False
+    Mensaje.objects.create(
+        conversacion=conv,
+        whatsapp_message_id=msg_id,
+        direccion=Mensaje.DIR_SALIENTE,
+        tipo=Mensaje.TIPO_TEXTO,
+        contenido=mensaje,
+        status=Mensaje.STATUS_ENVIADO,
+        timestamp=enviado_at,
+    )
+    return conv, True
+
+
 def _lock_key(difusion_id):
     return f'difusion_lock_{difusion_id}'
 
@@ -72,7 +136,7 @@ def send_difusion_task(self, difusion_id: int):
     from apps.whatsapp.sender import send_text_message
 
     try:
-        difusion = Difusion.objects.get(pk=difusion_id)
+        difusion = Difusion.objects.select_related('numero', 'creado_por').get(pk=difusion_id)
     except Difusion.DoesNotExist:
         logger.error('Difusion %s not found', difusion_id)
         return
@@ -108,6 +172,9 @@ def send_difusion_task(self, difusion_id: int):
             return
 
         mensaje_base = difusion.get_mensaje_texto()
+        # Número elegido; las difusiones viejas (sin número) salen por la instancia por defecto
+        numero = difusion.numero
+        numero_inbox = numero or numero_de_envio()
         first = True
 
         for dc in pendientes:
@@ -116,7 +183,7 @@ def send_difusion_task(self, difusion_id: int):
             first = False
             try:
                 mensaje = _personalizar(mensaje_base, dc)
-                result = send_text_message(dc.telefono, mensaje)
+                result = send_text_message(dc.telefono, mensaje, numero=numero)
                 msg_id = result.get('id', '')
                 now = timezone.now()
 
@@ -129,42 +196,10 @@ def send_difusion_task(self, difusion_id: int):
 
                 # Registrar en inbox
                 try:
-                    from apps.whatsapp.models import Conversacion, Mensaje
-                    from apps.contacts.asignacion import asegurar_agente
-                    conv, created = Conversacion.objects.get_or_create(
-                        telefono=dc.telefono,
-                        defaults={
-                            'nombre_contacto': dc.nombre or dc.telefono,
-                            'contacto': dc.contacto,
-                            'origen_conversacion': Conversacion.ORIGEN_SALIENTE,
-                        },
-                    )
-                    if not created:
-                        update_fields = {'ultimo_mensaje_at': now}
-                        if not conv.contacto_id and dc.contacto_id:
-                            update_fields['contacto_id'] = dc.contacto_id
-                        if not conv.nombre_contacto and dc.nombre:
-                            update_fields['nombre_contacto'] = dc.nombre
-                        Conversacion.objects.filter(pk=conv.pk).update(**update_fields)
-                    else:
-                        Conversacion.objects.filter(pk=conv.pk).update(ultimo_mensaje_at=now)
-                    if not conv.contacto_id and dc.contacto_id:
-                        conv.contacto = dc.contacto
-
-                    # Dueño: el del contacto; si no tiene, quien creó la difusión (si es agente); si no, por carga
-                    asegurar_agente(conv=conv, contacto=conv.contacto, iniciador=difusion.creado_por)
-
-                    Mensaje.objects.create(
-                        conversacion=conv,
-                        whatsapp_message_id=msg_id,
-                        direccion=Mensaje.DIR_SALIENTE,
-                        tipo=Mensaje.TIPO_TEXTO,
-                        contenido=mensaje,
-                        status=Mensaje.STATUS_ENVIADO,
-                        timestamp=now,
-                    )
+                    registrar_en_inbox(dc, mensaje, msg_id, now, iniciador=difusion.creado_por,
+                                       numero=numero_inbox)
                 except Exception as inbox_err:
-                    logger.warning('Error registrando en inbox para %s: %s', dc.telefono, inbox_err)
+                    logger.exception('Error registrando en inbox para %s: %s', dc.telefono, inbox_err)
             except Exception as e:
                 logger.error('Difusion %s: error sending to %s: %s', difusion_id, dc.telefono, e)
                 DifusionContacto.objects.filter(pk=dc.pk).update(

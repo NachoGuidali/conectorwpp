@@ -223,7 +223,7 @@
           </a>
           {% else %}
           <div style="color:var(--text3); font-size:13px; margin-bottom:12px;">Sin conversación activa</div>
-          <a href="{% url 'whatsapp:inbox' %}?new=1&tel={{ contacto.telefono }}" class="btn btn-green" style="font-size:13px;">
+          <a href="{% url 'whatsapp:ir_a_conversacion' contacto.telefono|cut:'+' %}" class="btn btn-green" style="font-size:13px;">
             Iniciar conversación
           </a>
           {% endif %}

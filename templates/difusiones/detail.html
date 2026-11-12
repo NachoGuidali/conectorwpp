@@ -161,6 +161,9 @@
       <div class="card">
         <div class="card-title">Mensaje</div>
         <div class="msg-box">{{ mensaje_preview }}</div>
+        <div style="font-size:11px; color:var(--text3); margin-top:8px;">
+          Enviada desde: {% if difusion.numero %}{{ difusion.numero.nombre }}{% if difusion.numero.telefono %} · {{ difusion.numero.telefono }}{% endif %}{% else %}número por defecto{% endif %}
+        </div>
         {% if difusion.plantilla %}
         <div style="font-size:11px; color:var(--text3); margin-top:8px;">Plantilla: {{ difusion.plantilla.nombre }}</div>
         {% endif %}

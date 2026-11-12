@@ -45,7 +45,12 @@ def _context_base():
     )
     for v in variables_disponibles:
         v['slug'] = v['nombre']
+    from apps.whatsapp.models import NumeroWhatsApp
+    from .tasks import numero_de_envio
+    por_defecto = numero_de_envio()
     return {
+        'numeros': NumeroWhatsApp.objects.filter(activo=True).order_by('orden', 'nombre'),
+        'numero_defecto_id': por_defecto.pk if por_defecto else None,
         'campos_disponibles': campos,
         'grupos': grupos,
         'plantillas': plantillas,
@@ -93,6 +98,7 @@ class DifusionCreateView(LoginRequiredMixin, View):
         mensaje = request.POST.get('mensaje', '').strip()
         plantilla_id = request.POST.get('plantilla_id', '').strip()
         accion = request.POST.get('accion', 'draft')
+        numero_id = request.POST.get('numero_id', '').strip()
 
         if not nombre:
             messages.error(request, 'El nombre de la difusión es requerido.')
@@ -102,6 +108,14 @@ class DifusionCreateView(LoginRequiredMixin, View):
 
         if not mensaje and not plantilla_id:
             messages.error(request, 'Escribí un mensaje o seleccioná una plantilla.')
+            ctx = _context_base()
+            ctx['post_data'] = request.POST
+            return render(request, self.template_name, ctx)
+
+        from apps.whatsapp.models import NumeroWhatsApp
+        numero = NumeroWhatsApp.objects.filter(pk=numero_id, activo=True).first() if numero_id.isdigit() else None
+        if numero is None and NumeroWhatsApp.objects.filter(activo=True).count() > 1:
+            messages.error(request, 'Elegí desde qué número de WhatsApp sale la difusión.')
             ctx = _context_base()
             ctx['post_data'] = request.POST
             return render(request, self.template_name, ctx)
@@ -149,6 +163,7 @@ class DifusionCreateView(LoginRequiredMixin, View):
             mensaje=mensaje,
             plantilla=plantilla,
             variables_plantilla=variables,
+            numero=numero,
             filtros=filtros,
             estado=Difusion.ESTADO_BORRADOR,
             total=len(contactos),
@@ -178,7 +193,7 @@ class DifusionCreateView(LoginRequiredMixin, View):
 # ──────────────────────────────────────────────
 class DifusionDetailView(LoginRequiredMixin, View):
     def get(self, request, pk):
-        difusion = get_object_or_404(Difusion.objects.select_related('plantilla', 'creado_por'), pk=pk)
+        difusion = get_object_or_404(Difusion.objects.select_related('plantilla', 'creado_por', 'numero'), pk=pk)
 
         q = request.GET.get('q', '').strip()
         dest_qs = difusion.destinatarios.all()

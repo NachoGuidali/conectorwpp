@@ -162,6 +162,22 @@
                    value="{{ post_data.nombre|default:'' }}" placeholder="ej: Promo Junio, Recordatorio pago...">
           </div>
 
+          <!-- Número de envío -->
+          <div class="form-row">
+            <label class="form-label">Enviar desde el número <span style="color:var(--red);">*</span></label>
+            <select name="numero_id" class="form-input" required>
+              {% if numeros|length > 1 %}<option value="">— Elegí un número —</option>{% endif %}
+              {% for n in numeros %}
+              <option value="{{ n.pk }}"
+                {% if post_data.numero_id %}{% if post_data.numero_id == n.pk|stringformat:"s" %}selected{% endif %}{% elif numeros|length == 1 %}selected{% endif %}>
+                {{ n.nombre }}{% if n.telefono %} · {{ n.telefono }}{% endif %}{% if n.pk == numero_defecto_id %} (por defecto){% endif %}
+              </option>
+              {% empty %}
+              <option value="">No hay números de WhatsApp activos</option>
+              {% endfor %}
+            </select>
+          </div>
+
           <hr class="separator">
 
           <!-- Fecha de creación -->

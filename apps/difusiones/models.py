@@ -24,6 +24,14 @@ class Difusion(models.Model):
         default=list, blank=True,
         help_text='Lista de valores para las variables {{1}}, {{2}}... de la plantilla.',
     )
+    numero = models.ForeignKey(
+        'whatsapp.NumeroWhatsApp',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='difusiones',
+        verbose_name='Número de WhatsApp',
+        help_text='Número por el que sale la difusión. Vacío = número por defecto.',
+    )
     filtros = models.JSONField(
         default=dict, blank=True,
         help_text='Criterios de filtrado almacenados (fecha, grupo, campos).',
