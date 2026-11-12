@@ -132,8 +132,10 @@ def normalizar_telefono(telefono: str, agregar_prefijo_ar: bool = True) -> str:
 
 
 def import_from_rows(headers, rows, col_roles, col_tipos, update_existing=True, agregar_prefijo_ar=True,
-                     asignador=None):
+                     asignador=None, grupo_fijo=''):
     """
+    grupo_fijo: si viene, todos los contactos del archivo (nuevos y existentes)
+                quedan en ese grupo, ignorando la columna Grupo.
     col_roles: {str(col_idx): role}
     col_tipos: {str(col_idx): tipo}  (for role='campo')
     asignador: función(contacto) que asegura el dueño de cada contacto importado
@@ -198,7 +200,9 @@ def import_from_rows(headers, rows, col_roles, col_tipos, update_existing=True, 
             defaults = {'nombre': nombre}
             if email_idx is not None and email_idx < len(row):
                 defaults['email'] = row[email_idx]
-            if grupo_idx is not None and grupo_idx < len(row):
+            if grupo_fijo:
+                defaults['grupo'] = grupo_fijo
+            elif grupo_idx is not None and grupo_idx < len(row):
                 defaults['grupo'] = row[grupo_idx]
             if notas_idx is not None and notas_idx < len(row):
                 defaults['notas'] = row[notas_idx]
@@ -211,6 +215,12 @@ def import_from_rows(headers, rows, col_roles, col_tipos, update_existing=True, 
                 contacto, was_created = Contacto.objects.get_or_create(
                     telefono=telefono, defaults=defaults,
                 )
+
+            # El grupo elegido se aplica también a los existentes no actualizados,
+            # para que la difusión al grupo incluya a todo el archivo
+            if grupo_fijo and not was_created and contacto.grupo != grupo_fijo:
+                contacto.grupo = grupo_fijo
+                contacto.save(update_fields=['grupo', 'updated_at'])
 
             if was_created:
                 created += 1

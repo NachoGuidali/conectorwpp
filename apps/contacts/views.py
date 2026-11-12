@@ -192,6 +192,10 @@ class ContactoCreateView(LoginRequiredMixin, View):
             'prefill_nombre': request.GET.get('nombre', ''),
             'prefill_grupo': grupo,
             'agentes': _agentes_activos() if request.user.can_see_all else None,
+            'grupos_existentes': list(
+                Contacto.objects.exclude(grupo='').values_list('grupo', flat=True)
+                .distinct().order_by('grupo')
+            ),
         })
 
     def post(self, request):
@@ -500,6 +504,7 @@ class ImportarContactosView(LoginRequiredMixin, View):
 
         update_existing = request.POST.get('update_existing') == 'on'
         agregar_prefijo_ar = request.POST.get('agregar_prefijo_ar') == 'on'
+        grupo_fijo = request.POST.get('grupo_fijo', '').strip()[:100]
 
         with open(tmp_path, 'rb') as f:
             headers_full, rows_full, error = parse_file(f, ext)
@@ -518,9 +523,12 @@ class ImportarContactosView(LoginRequiredMixin, View):
             headers_full, rows_full, col_roles, col_tipos, update_existing,
             agregar_prefijo_ar=agregar_prefijo_ar,
             asignador=_asignador_importacion(request),
+            grupo_fijo=grupo_fijo,
         )
 
         msg = f'Importación completa: {created} creados, {updated} actualizados, {skipped} omitidos.'
+        if grupo_fijo:
+            msg += f' Agregados al grupo "{grupo_fijo}".'
         if errors:
             msg += f' {len(errors)} error(es).'
             for e in errors[:5]:

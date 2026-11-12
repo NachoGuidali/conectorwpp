@@ -117,6 +117,21 @@
       <!-- 3. Opciones -->
       <div class="section">
         <div class="section-title">3. Opciones</div>
+        <div style="margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid var(--border);">
+          <label for="grupo_fijo" style="display:block; font-size:13px; font-weight:500; margin-bottom:6px;">
+            Agregar todos los contactos a un grupo
+          </label>
+          <input type="text" id="grupo_fijo" name="grupo_fijo" list="grupos_existentes" maxlength="100"
+                 class="form-select" style="min-width:280px; cursor:text;"
+                 placeholder="Elegí un grupo existente o escribí uno nuevo" autocomplete="off">
+          <datalist id="grupos_existentes">
+            {% for g in grupos_existentes %}<option value="{{ g }}">{% endfor %}
+          </datalist>
+          <div style="font-size:11px; color:var(--text3); margin-top:6px;">
+            Opcional. Si lo completás, todos los contactos del archivo (nuevos y existentes) quedan en este grupo
+            y se ignora la columna "Grupo". Después podés hacer una difusión a ese grupo.
+          </div>
+        </div>
         <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; color:var(--text2); margin-bottom:10px;">
           <input type="checkbox" name="update_existing" checked style="width:auto;">
           Actualizar contactos existentes que tengan el mismo número de teléfono
