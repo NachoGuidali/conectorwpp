@@ -121,12 +121,21 @@
           <label for="grupo_fijo" style="display:block; font-size:13px; font-weight:500; margin-bottom:6px;">
             Agregar todos los contactos a un grupo
           </label>
-          <input type="text" id="grupo_fijo" name="grupo_fijo" list="grupos_existentes" maxlength="100"
-                 class="form-select" style="min-width:280px; cursor:text;"
-                 placeholder="Elegí un grupo existente o escribí uno nuevo" autocomplete="off">
-          <datalist id="grupos_existentes">
-            {% for g in grupos_existentes %}<option value="{{ g }}">{% endfor %}
-          </datalist>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <select id="grupo_fijo" name="grupo_fijo" class="form-select" style="min-width:280px;"
+                    onchange="toggleGrupoNuevo(this)">
+              <option value="">— No agregar a un grupo —</option>
+              {% if grupos_existentes %}
+              <optgroup label="Grupos existentes">
+                {% for g in grupos_existentes %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+              </optgroup>
+              {% endif %}
+              <option value="__nuevo__">+ Crear grupo nuevo…</option>
+            </select>
+            <input type="text" id="grupo_nuevo" name="grupo_nuevo" maxlength="100"
+                   class="form-select" style="min-width:240px; cursor:text; display:none;"
+                   placeholder="Nombre del grupo nuevo" autocomplete="off">
+          </div>
           <div style="font-size:11px; color:var(--text3); margin-top:6px;">
             Opcional. Si lo completás, todos los contactos del archivo (nuevos y existentes) quedan en este grupo
             y se ignora la columna "Grupo". Después podés hacer una difusión a ese grupo.
@@ -145,10 +154,19 @@
         <div style="margin-top:14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; color:var(--text2);">
           <span>Asignar los contactos nuevos a</span>
           <select name="agente_id" class="form-select">
-            <option value="">Repartir entre agentes (por carga)</option>
-            {% for a in agentes %}
-            <option value="{{ a.pk }}">{{ a.get_full_name|default:a.username }}</option>
-            {% endfor %}
+            <option value="">Repartir entre todos los agentes (por carga)</option>
+            {% if grupos_agentes %}
+            <optgroup label="Repartir entre un grupo de agentes">
+              {% for g in grupos_agentes %}
+              <option value="grupo:{{ g.pk }}">Grupo: {{ g.nombre }}</option>
+              {% endfor %}
+            </optgroup>
+            {% endif %}
+            <optgroup label="Un agente">
+              {% for a in agentes %}
+              <option value="{{ a.pk }}">{{ a.get_full_name|default:a.username }}</option>
+              {% endfor %}
+            </optgroup>
           </select>
           <span style="font-size:11px; color:var(--text3);">Los que ya tienen agente lo conservan.</span>
         </div>
@@ -169,6 +187,13 @@
 
 {% block extra_js %}
 <script>
+function toggleGrupoNuevo(select) {
+  const input = document.getElementById('grupo_nuevo');
+  const nuevo = select.value === '__nuevo__';
+  input.style.display = nuevo ? '' : 'none';
+  input.required = nuevo;
+  if (nuevo) input.focus();
+}
 function toggleTipo(select, idx) {
   const wrap = document.getElementById(`tipo_wrap_${idx}`);
   wrap.classList.toggle('visible', select.value === 'campo');

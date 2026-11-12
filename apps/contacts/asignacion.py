@@ -33,12 +33,13 @@ def es_agente_valido(user) -> bool:
 # Elección de agente por carga
 # ──────────────────────────────────────────────
 
-def candidatos(excluir_ids=()):
+def candidatos(excluir_ids=(), solo_ids=None):
     """
     Agentes disponibles ordenados por carga (conversaciones no archivadas).
     Fallback: en turno y recibe asignaciones → recibe asignaciones → cualquier
     agente activo. El último nivel evita que algo quede sin dueño cuando nadie
     tiene activado "recibe asignaciones".
+    solo_ids: limita a esos usuarios (ej. los agentes de un GrupoAgentes).
     """
     User = get_user_model()
     niveles = (
@@ -51,6 +52,7 @@ def candidatos(excluir_ids=()):
             User.objects
             .filter(rol=User.ROL_AGENTE, is_active=True, **filtros)
             .exclude(pk__in=list(excluir_ids))
+            .filter(**({} if solo_ids is None else {'pk__in': list(solo_ids)}))
             .annotate(carga=Count('conversaciones', filter=Q(conversaciones__archivada=False)))
             .order_by('carga', 'pk')
         )
@@ -69,8 +71,8 @@ def elegir_agente(excluir_ids=()):
 class Repartidor:
     """Reparte muchos ítems de una vez por menor carga, contando lo que va asignando."""
 
-    def __init__(self, excluir_ids=()):
-        self._cargas = {a.pk: [a.carga, a] for a in candidatos(excluir_ids)}
+    def __init__(self, excluir_ids=(), solo_ids=None):
+        self._cargas = {a.pk: [a.carga, a] for a in candidatos(excluir_ids, solo_ids)}
 
     def __bool__(self):
         return bool(self._cargas)

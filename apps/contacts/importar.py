@@ -10,6 +10,15 @@ def _slugify(text: str) -> str:
     return re.sub(r'[^\w]', '_', text.lower().strip())[:100] or 'campo'
 
 
+def _celda(c) -> str:
+    """Texto de una celda. Los números enteros de Excel vienen como float (1122334455.0)."""
+    if c is None:
+        return ''
+    if isinstance(c, float) and c.is_integer():
+        return str(int(c))
+    return str(c).strip()
+
+
 def parse_file(file_obj, ext: str):
     """Parse uploaded file. Returns (headers, rows, error_str_or_None)."""
     if ext in ('xlsx', 'xls'):
@@ -40,7 +49,7 @@ def parse_file(file_obj, ext: str):
     headers = [str(h).strip() if h is not None else f'Col{i + 1}' for i, h in enumerate(all_rows[0])]
     rows = []
     for row in all_rows[1:]:
-        cells = [str(c).strip() if c is not None else '' for c in row]
+        cells = [_celda(c) for c in row]
         while len(cells) < len(headers):
             cells.append('')
         if any(cells):
@@ -108,27 +117,49 @@ def auto_detect_mapping(headers: list) -> dict:
     return mapping
 
 
+def _quitar_15(nacional: str) -> str:
+    """Saca el '15' de celular argentino que va después del código de área (11 15 2233 4455)."""
+    if len(nacional) != 12:
+        return nacional
+    if nacional.startswith('11'):
+        largos = (2,)
+    else:
+        largos = (3, 4)
+    for largo in largos:
+        if nacional[largo:largo + 2] == '15':
+            return nacional[:largo] + nacional[largo + 2:]
+    return nacional
+
+
 def normalizar_telefono(telefono: str, agregar_prefijo_ar: bool = True) -> str:
-    """Normaliza teléfono al formato WhatsApp. Si agregar_prefijo_ar=True, añade +549 a números locales."""
+    """
+    Normaliza teléfono al formato WhatsApp (+549XXXXXXXXXX para celulares argentinos).
+    Con agregar_prefijo_ar=True: a los números locales les agrega +549, les saca
+    el 0 y el 15, y a los +54 sin el 9 de celular se lo agrega.
+    """
     t = re.sub(r'[\s\-().]+', '', telefono.strip())
-    if t.startswith('+'):
-        return t
     if t.startswith('00'):
-        return '+' + t[2:]
+        t = '+' + t[2:]
+    tenia_mas = t.startswith('+')
     t = re.sub(r'\D', '', t)
     if not t:
         return telefono
-    # Ya tiene prefijo completo
-    if t.startswith('549'):
-        return '+' + t
-    if t.startswith('54'):
-        return '+' + t
     if not agregar_prefijo_ar:
         return '+' + t
-    # Eliminar 0 inicial (formato local argentino: 011..., 0351...)
+    if t.startswith('549'):
+        return '+549' + _quitar_15(t[3:])
+    if t.startswith('54'):
+        nacional = t[2:]
+        if nacional.startswith('0'):
+            nacional = nacional[1:]
+        return '+549' + _quitar_15(nacional)
+    if tenia_mas:
+        # Otro código de país: se deja como está
+        return '+' + t
+    # Número local argentino (011..., 0351..., 11 15...)
     if t.startswith('0'):
         t = t[1:]
-    return '+549' + t
+    return '+549' + _quitar_15(t)
 
 
 def import_from_rows(headers, rows, col_roles, col_tipos, update_existing=True, agregar_prefijo_ar=True,

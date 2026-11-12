@@ -38,6 +38,11 @@ def _agentes_activos():
     return User.objects.filter(is_active=True, rol=User.ROL_AGENTE).order_by('first_name', 'username')
 
 
+def _grupos_agentes():
+    from apps.whatsapp.models import GrupoAgentes
+    return GrupoAgentes.objects.order_by('nombre')
+
+
 def _agentes_para(contacto):
     """Agentes activos, más el dueño actual si es un supervisor activo (para que figure en el selector)."""
     agentes = list(_agentes_activos())
@@ -192,10 +197,6 @@ class ContactoCreateView(LoginRequiredMixin, View):
             'prefill_nombre': request.GET.get('nombre', ''),
             'prefill_grupo': grupo,
             'agentes': _agentes_activos() if request.user.can_see_all else None,
-            'grupos_existentes': list(
-                Contacto.objects.exclude(grupo='').values_list('grupo', flat=True)
-                .distinct().order_by('grupo')
-            ),
         })
 
     def post(self, request):
@@ -483,6 +484,8 @@ class ImportarContactosView(LoginRequiredMixin, View):
             ],
             'tipos': TIPOS_CAMPO,
             'agentes': _agentes_activos() if request.user.can_see_all else None,
+            'grupos_agentes': _grupos_agentes() if request.user.can_see_all else None,
+            'grupos_existentes': _grupos_existentes(),
         })
 
     def _handle_confirm(self, request):
@@ -504,7 +507,19 @@ class ImportarContactosView(LoginRequiredMixin, View):
 
         update_existing = request.POST.get('update_existing') == 'on'
         agregar_prefijo_ar = request.POST.get('agregar_prefijo_ar') == 'on'
-        grupo_fijo = request.POST.get('grupo_fijo', '').strip()[:100]
+        grupo_fijo = request.POST.get('grupo_fijo', '').strip()
+        if grupo_fijo == '__nuevo__':
+            grupo_fijo = request.POST.get('grupo_nuevo', '').strip()
+        grupo_fijo = grupo_fijo[:100]
+
+        grupo_agentes = _grupo_agentes_elegido(request)
+        if grupo_agentes is not None and not grupo_agentes.agentes.filter(
+                is_active=True, rol='agente').exists():
+            messages.warning(
+                request,
+                f'El grupo de agentes "{grupo_agentes.nombre}" no tiene agentes activos: '
+                'los contactos se repartieron entre todos los agentes.',
+            )
 
         with open(tmp_path, 'rb') as f:
             headers_full, rows_full, error = parse_file(f, ext)
@@ -522,7 +537,7 @@ class ImportarContactosView(LoginRequiredMixin, View):
         created, updated, skipped, errors = import_from_rows(
             headers_full, rows_full, col_roles, col_tipos, update_existing,
             agregar_prefijo_ar=agregar_prefijo_ar,
-            asignador=_asignador_importacion(request),
+            asignador=_asignador_importacion(request, grupo_agentes),
             grupo_fijo=grupo_fijo,
         )
 
@@ -537,15 +552,33 @@ class ImportarContactosView(LoginRequiredMixin, View):
         return redirect('contacts:list')
 
 
-def _asignador_importacion(request):
+def _grupo_agentes_elegido(request):
+    """GrupoAgentes elegido por un supervisor en el selector de agente (valor 'grupo:<pk>')."""
+    valor = request.POST.get('agente_id', '').strip()
+    if not request.user.can_see_all or not valor.startswith('grupo:'):
+        return None
+    pk = valor.split(':', 1)[1]
+    if not pk.isdigit():
+        return None
+    from apps.whatsapp.models import GrupoAgentes
+    return GrupoAgentes.objects.filter(pk=pk).first()
+
+
+def _asignador_importacion(request, grupo_agentes=None):
     """
     Dueño de los contactos importados. Los que ya tienen dueño (o conversación
     con agente) lo conservan. El resto: el agente que importa; si importa un
-    supervisor, el agente elegido o reparto por carga.
+    supervisor, el agente elegido, reparto por carga entre los agentes de un
+    grupo de agentes, o reparto por carga entre todos.
     """
     from .asignacion import Repartidor, es_agente_valido
     elegido = _agente_elegido(request)
-    repartidor = Repartidor() if elegido is None else None
+    repartidor = None
+    if elegido is None:
+        if grupo_agentes is not None:
+            repartidor = Repartidor(solo_ids=grupo_agentes.agentes.values_list('pk', flat=True))
+        if not repartidor:
+            repartidor = Repartidor()
 
     def asignar(contacto):
         conv = vincular_conversacion(contacto.telefono, contacto, contacto.nombre)
